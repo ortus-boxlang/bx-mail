@@ -1,16 +1,16 @@
 {
-    "name":"@MODULE_NAME@",
+    "name":"BoxLang Mail Module",
     "version":"@build.version@+@build.number@",
-    "location"  : "https://downloads.ortussolutions.com/ortussolutions/boxlang-modules/@MODULE_SLUG@/@build.version@/@MODULE_SLUG@-@build.version@.zip",
+    "location"  : "https://downloads.ortussolutions.com/ortussolutions/boxlang-modules/bx-mail/@build.version@/bx-mail-@build.version@.zip",
     "author":"Ortus Solutions",
-    "homepage":"https://github.com/boxlang-modules/@MODULE_SLUG@",
-    "documentation":"https://github.com/boxlang-modules/@MODULE_SLUG@",
+    "homepage":"https://github.com/boxlang-modules/bx-mail",
+    "documentation":"https://github.com/boxlang-modules/bx-mail",
     "repository":{
         "type":"git",
-        "URL":"https://github.com/boxlang-modules/@MODULE_SLUG@"
+        "URL":"https://github.com/boxlang-modules/bx-mail"
     },
-    "bugs":"https://github.com/boxlang-modules/@MODULE_SLUG@/issues",
-    "slug":"@MODULE_SLUG@",
+    "bugs":"https://github.com/boxlang-modules/bx-mail/issues",
+    "slug":"bx-mail",
     "shortDescription":"Module template for BoxLang modules",
     "type":"boxlang-modules",
     "keywords":[

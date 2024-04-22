@@ -1,4 +1,4 @@
-name: @MODULE_NAME@ Snapshots
+name: BoxLang Mail Module Snapshots
 
 on:
   push:

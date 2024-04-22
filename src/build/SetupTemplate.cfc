@@ -39,7 +39,7 @@ component {
 		command( "tokenReplace" )
 			.params(
 				path        = "/#variables.cwd#/**",
-				token       = "@MODULE_NAME@",
+				token       = "BoxLang Mail Module",
 				replacement = moduleName
 			)
 			.run();
@@ -47,7 +47,7 @@ component {
 		command( "tokenReplace" )
 			.params(
 				path        = "/#variables.cwd#/**",
-				token       = "@MODULE_SLUG@",
+				token       = "bx-mail",
 				replacement = moduleSlug
 			)
 			.run();
@@ -55,7 +55,7 @@ component {
 		command( "tokenReplace" )
 			.params(
 				path        = "/#variables.cwd#/**",
-				token       = "@MODULE_DESCRIPTION@",
+				token       = "A collection of Email BIFS, components and more",
 				replacement = moduleDescription
 			)
 			.run();
