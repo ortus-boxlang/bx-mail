@@ -1,3 +1,20 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.ortussolutions.boxlang.mail.components;
 
 import java.util.Set;
@@ -30,18 +47,18 @@ public class MailPart extends Component {
 	}
 
 	/**
-	 * An example component that says hello
+	 * Processes a mail part within the body of a mail component
 	 *
 	 * @param context        The context in which the Component is being invoked
 	 * @param attributes     The attributes to the Component
 	 * @param body           The body of the Component
 	 * @param executionState The execution state of the Component
 	 *
-	 * @attribute.name The name of the person greeting us.
+	 * @attribute.type The mime type of the mail part
 	 *
-	 * @attribute.location The location of the person.
+	 * @attribute.charset The character encoding of the mail part
 	 *
-	 * @attribute.shout Whether the person is shouting or not.
+	 * @attribute.wrapText The number of characters to wrap the mail part at
 	 *
 	 */
 	public BodyResult _invoke( IBoxContext context, IStruct attributes, ComponentBody body, IStruct executionState ) {

@@ -127,11 +127,39 @@ public class Mail extends Component {
 	 * @param body           The body of the Component
 	 * @param executionState The execution state of the Component
 	 *
-	 * @attribute.name The name of the person greeting us.
+	 * @attribute.from "e-mail address"
 	 *
-	 * @attribute.location The location of the person.
+	 * @attribute.to "comma-delimited list"
 	 *
-	 * @attribute.shout Whether the person is shouting or not.
+	 * @attribute.charset "character encoding"
+	 *
+	 * @attribute.debug "yes|no"
+	 *
+	 * @attribute.mailerid "header id"
+	 *
+	 * @attribute.mimeAttach "path of file to attach"
+	 *
+	 * @attribute.subject "string"
+	 *
+	 * @attribute.type "mime type"
+	 *
+	 * @attribute.wrapText "column number"
+	 *
+	 * @attribute.sign "true|false"
+	 *
+	 * @attribute.encrypt "true|false"
+	 *
+	 * @attribute.query "query name"
+	 *
+	 * @attribute.group "query column"
+	 *
+	 * @attribute.groupCaseSensitive "yes|no"
+	 *
+	 * @attribute.startRow "query row number"
+	 *
+	 * @attribute.maxRows "integer"
+	 *
+	 * @return An empty body result is returned
 	 *
 	 */
 	public BodyResult _invoke( IBoxContext context, IStruct attributes, ComponentBody body, IStruct executionState ) {
@@ -216,6 +244,12 @@ public class Mail extends Component {
 		return DEFAULT_RETURN;
 	}
 
+	/**
+	 * Sets the message recipients
+	 *
+	 * @param attributes
+	 * @param message
+	 */
 	void setMessageRecipients( IStruct attributes, Email message ) {
 
 		String	to		= attributes.getAsString( Key.to );
@@ -276,6 +310,13 @@ public class Mail extends Component {
 
 	}
 
+	/**
+	 * Sets the message server parameters
+	 *
+	 * @param context
+	 * @param attributes
+	 * @param message
+	 */
 	void setMessageServer( IBoxContext context, IStruct attributes, Email message ) {
 
 		IStruct	primaryServer	= StructCaster.cast( getMailServers( context, attributes ).get( 0 ) );
@@ -313,6 +354,16 @@ public class Mail extends Component {
 
 	}
 
+	/**
+	 * Appends mime content parts to the message
+	 *
+	 * @param message
+	 * @param buffer
+	 * @param attributes
+	 * @param context
+	 * @param mailParams
+	 * @param mailParts
+	 */
 	private void appendMimeContent( MultiPartEmail message, StringBuffer buffer, IStruct attributes, IBoxContext context, Array mailParams, Array mailParts ) {
 		String	mimeAttach	= attributes.getAsString( MailKeys.mimeAttach );
 		Boolean	remove		= attributes.getAsBoolean( MailKeys.remove );
@@ -377,6 +428,14 @@ public class Mail extends Component {
 
 	}
 
+	/**
+	 * Appends an individual message part
+	 *
+	 * @param message
+	 * @param content
+	 * @param mimeType
+	 * @param charset
+	 */
 	private void appendMessagePart( MultiPartEmail message, Object content, String mimeType, String charset ) {
 		try {
 			if ( content instanceof String ) {
@@ -396,6 +455,14 @@ public class Mail extends Component {
 		}
 	}
 
+	/**
+	 * Parses the mail server attributes and settings
+	 *
+	 * @param context
+	 * @param attributes
+	 *
+	 * @return
+	 */
 	private Array getMailServers( IBoxContext context, IStruct attributes ) {
 		String	server			= attributes.getAsString( Key.server );
 		String	username		= attributes.getAsString( Key.username );
@@ -434,6 +501,13 @@ public class Mail extends Component {
 		return mailServers;
 	}
 
+	/**
+	 * Spools or sends the email message
+	 *
+	 * @param message
+	 * @param attributes
+	 * @param context
+	 */
 	void spoolOrSend( Email message, IStruct attributes, IBoxContext context ) {
 		IStruct	moduleSettings	= runtime.getModuleService().getModuleSettings( MailKeys._MODULE_NAME );
 		Boolean	spoolEnable		= attributes.getAsBoolean( MailKeys.spoolEnable );
@@ -476,6 +550,12 @@ public class Mail extends Component {
 
 	}
 
+	/**
+	 * Sign and/or encrypt the email
+	 *
+	 * @param attributes
+	 * @param message
+	 */
 	private void signAndEncrypt( IStruct attributes, Email message ) {
 		// Encryption attributes
 		Boolean	sign				= attributes.getAsBoolean( MailKeys.sign );

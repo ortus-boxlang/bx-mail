@@ -84,6 +84,11 @@ public class SpoolScheduler extends BaseScheduler {
 
 	}
 
+	/**
+	 * Processess the spool according to the settings
+	 * 
+	 * @return
+	 */
 	protected static IStruct processSpool() {
 		IStruct			result	= Struct.of(
 		    MailKeys.messages, new Array(),
