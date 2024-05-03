@@ -1,9 +1,6 @@
 {
 	"runtime": {
-		"modulesDirectory": [
-			"${user-dir}/src/main",
-			"${user-dir}/src/test/resources/modules"
-		],
+		"modulesDirectory": ["${user-dir}/src/main"],
 		"modules": {
 			"mail": {
 				"settings": {
