@@ -26,6 +26,7 @@ repositories {
 
 dependencies {
 	implementation 'org.apache.commons:commons-email:1.6.0'
+	// implementation 'org.bouncycastle:bcmail-jdk15on:1.70'
 	// Until BoxLang is published to Maven Central
 	// Look for it in the local build directory
 	// You must run `./gradle build -x test` in the BoxLang project

@@ -2,6 +2,8 @@ package com.ortussolutions.boxlang.mail.components;
 
 import java.util.Set;
 
+import org.apache.commons.text.WordUtils;
+
 import com.ortussolutions.boxlang.mail.util.MailKeys;
 
 import ortus.boxlang.runtime.components.Attribute;
@@ -47,12 +49,13 @@ public class MailPart extends Component {
 		if ( parentState == null ) {
 			throw new RuntimeException( "MailPart must be nested in the body of an Mail component" );
 		}
+		Integer			wrapText	= parentState.getAsInteger( MailKeys.wrapText );
 
-		StringBuffer buffer = new StringBuffer();
+		StringBuffer	buffer		= new StringBuffer();
 
 		processBody( context, body, buffer );
 
-		attributes.put( Key.result, buffer.toString() );
+		attributes.put( Key.result, wrapText != null ? WordUtils.wrap( buffer.toString(), wrapText ) : buffer.toString() );
 		// Set our data into the HTTP component for it to use
 		parentState.getAsArray( MailKeys.mailParts ).add( attributes );
 

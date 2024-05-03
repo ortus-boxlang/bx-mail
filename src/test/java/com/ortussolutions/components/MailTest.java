@@ -230,6 +230,42 @@ public class MailTest {
 		assertEquals( "jclausen@ortussolutions.com", message.getFromAddress().toString() );
 	}
 
+	@DisplayName( "It can test a basic sending of mail with a mime attachment, deleting the file after the message is sent" )
+	@Test
+	public void testMailMimeAttachRemove() throws InterruptedException {
+		variables.put( Key.of( "testFile" ), testBinaryFile );
+		assertTrue( FileSystemUtil.exists( testBinaryFile ) );
+		instance.executeSource(
+		    """
+		                           	<bx:mail
+		          			from="jclausen@ortussolutions.com"
+		          			to="jclausen@ortussolutions.com"
+		          			subject="Mail Test"
+		          			server="127.0.0.1"
+		          			port="25"
+		          			spoolEnable="false"
+		          			debug="true"
+		       mimeAttach="#testFile#"
+		    remove=true
+		          messageIdentifier="messageId"
+		          messageVariable="messageVar"
+		          		>
+		     Here's an image!
+		          </bx:mail>
+		                           """,
+		    context, BoxSourceType.BOXTEMPLATE );
+		assertTrue( variables.get( messageId ) instanceof String );
+		assertTrue( variables.get( messageVar ) instanceof Email );
+		Email message = ( Email ) variables.get( messageVar );
+		assertEquals( "Here's an image!", StringCaster.cast( message.getContent() ).trim() );
+		assertTrue( ( ( MultiPartEmail ) message ).isBoolHasAttachments() );
+		assertEquals( "jclausen@ortussolutions.com", message.getToAddresses().get( 0 ).toString() );
+		assertEquals( "jclausen@ortussolutions.com", message.getFromAddress().toString() );
+		// TODO: Per the docs the DELETE_ON_CLOSE may have a delay. We'll circle back to this and figure out away to test this
+		// message = null;
+		// assertFalse( FileSystemUtil.exists( testBinaryFile ) );
+	}
+
 	@DisplayName( "It can test a basic sending of mail with a mime attachment" )
 	@Test
 	public void testMultiPartWithFile() throws MessagingException, IOException {

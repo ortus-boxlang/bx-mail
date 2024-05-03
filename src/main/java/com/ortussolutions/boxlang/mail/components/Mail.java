@@ -35,6 +35,7 @@ import org.apache.commons.mail.EmailException;
 import org.apache.commons.mail.MultiPartEmail;
 import org.apache.commons.mail.SimpleEmail;
 import org.apache.commons.mail.util.IDNEmailAddressConverter;
+import org.apache.commons.text.WordUtils;
 
 import com.ortussolutions.boxlang.mail.util.MailKeys;
 
@@ -71,9 +72,6 @@ public class Mail extends Component {
 
 	public Mail() {
 		super();
-		// new Attribute( Key._NAME, "string", Set.of( Validator.REQUIRED ) ),
-		// new Attribute( locationKey, "string", "world", Set.of( Validator.REQUIRED, Validator.valueOneOf( "world", "universe" ) ) ),
-		// new Attribute( shoutKey, "boolean", false, Set.of( Validator.REQUIRED ) ),
 		declaredAttributes = new Attribute[] {
 		    new Attribute( Key.from, "string", Set.of( Validator.REQUIRED ) ), // "e-mail address"
 		    new Attribute( Key.to, "string", Set.of( Validator.REQUIRED ) ), // "comma-delimited list"
@@ -88,17 +86,18 @@ public class Mail extends Component {
 		    new Attribute( Key.password, "string" ), // "string"
 		    new Attribute( Key.port, "integer" ), // "integer"
 		    new Attribute( Key.priority, "string" ), // "integer or string priority level"
-		    new Attribute( MailKeys.remove, "string" ), // "yes|no"
+		    new Attribute( MailKeys.remove, "boolean", false ), // "yes|no"
 		    new Attribute( MailKeys.replyTo, "string" ), // "e-mail address"
 		    new Attribute( Key.server, "string" ), // "SMTP server address"
-		    new Attribute( MailKeys.spoolEnable, "boolean" ), // "yes|no"
+		    // Disabling spoolEnable by default for now until can fix the Scheduler not being picked up
+		    new Attribute( MailKeys.spoolEnable, "boolean", false ), // "yes|no"
 		    new Attribute( Key.timeout, "string" ), // "number of seconds"
 		    new Attribute( Key.type, "string" ), // "mime type"
 		    new Attribute( Key.username, "string" ), // "SMTP user ID"
 		    new Attribute( MailKeys.useSSL, "string" ), // "yes|no"
 		    new Attribute( MailKeys.useTLS, "string" ), // "yes|no"
 		    new Attribute( MailKeys.wrapText, "string" ), // "column number"
-		    new Attribute( MailKeys.sign, "string" ), // "true|false"
+		    new Attribute( MailKeys.sign, "boolean", false ), // "true|false"
 		    new Attribute( MailKeys.keystore, "string" ), // "location of keystore"
 		    new Attribute( MailKeys.keystorePassword, "string" ), // "password of keystore"
 		    new Attribute( MailKeys.keyAlias, "string" ), // "alias of key"
@@ -115,7 +114,7 @@ public class Mail extends Component {
 		    new Attribute( Key.maxRows, "integer", Set.of( Validator.NOT_IMPLEMENTED ) ), // "integer"
 		    // Test only attributes
 		    new Attribute( MailKeys.messageVariable, "any" ),
-		    new Attribute( MailKeys.messageIdentifier, "any" ),
+		    new Attribute( MailKeys.messageIdentifier, "any" )
 		};
 
 	}
@@ -143,27 +142,18 @@ public class Mail extends Component {
 		Boolean	debug				= attributes.getAsBoolean( MailKeys.debug );
 		String	mailerid			= attributes.getAsString( MailKeys.mailerid );
 		String	mimeAttach			= attributes.getAsString( MailKeys.mimeAttach );
-		String	priority			= attributes.getAsString( Key.priority );
-		String	remove				= attributes.getAsString( MailKeys.remove );
-		Boolean	spoolEnable			= attributes.getAsBoolean( MailKeys.spoolEnable );
 		String	subject				= attributes.getAsString( MailKeys.subject );
 		String	messageType			= attributes.getAsString( Key.type );
-		String	wrapText			= attributes.getAsString( MailKeys.wrapText );
-		String	sign				= attributes.getAsString( MailKeys.sign );
-		String	keystore			= attributes.getAsString( MailKeys.keystore );
-		String	keystorePassword	= attributes.getAsString( MailKeys.keystorePassword );
-		String	keyAlias			= attributes.getAsString( MailKeys.keyAlias );
-		String	keyPassword			= attributes.getAsString( MailKeys.keyPassword );
+		Integer	wrapText			= attributes.getAsInteger( MailKeys.wrapText );
+		// Encryption attributes
+		Boolean	sign				= attributes.getAsBoolean( MailKeys.sign );
 		Boolean	encrypt				= attributes.getAsBoolean( MailKeys.encrypt );
-		String	recipientCert		= attributes.getAsString( MailKeys.recipientCert );
-		String	encryptionAlgorithm	= attributes.getAsString( MailKeys.encryptionAlgorithm );
 		// Query-specific attributes
 		Object	query				= attributes.get( Key.query );
 		String	group				= attributes.getAsString( Key.group );
 		Boolean	groupCaseSensitive	= attributes.getAsBoolean( MailKeys.groupCaseSensitive );
 		Integer	startRow			= attributes.getAsInteger( Key.startRow );
 		Integer	maxRows				= attributes.getAsInteger( Key.maxRows );
-		// Undocumented properties used only for testing
 
 		executionState.put( MailKeys.mailParams, new Array() );
 		executionState.put( MailKeys.mailParts, new Array() );
@@ -195,10 +185,10 @@ public class Mail extends Component {
 		}
 
 		if ( message instanceof SimpleEmail ) {
-			message.setContent( buffer.toString(), messageType );
+			message.setContent( wrapText != null ? WordUtils.wrap( buffer.toString(), wrapText ) : buffer.toString(), messageType );
 		} else {
 			if ( mailParts.size() == 0 ) {
-				message.setContent( buffer.toString(), messageType );
+				message.setContent( wrapText != null ? WordUtils.wrap( buffer.toString(), wrapText ) : buffer.toString(), messageType );
 			}
 			appendMimeContent( ( MultiPartEmail ) message, buffer, attributes, context, mailParams, mailParts );
 		}
@@ -216,6 +206,10 @@ public class Mail extends Component {
 		setMessageServer( context, attributes, message );
 
 		setMessageRecipients( attributes, message );
+
+		if ( sign || encrypt ) {
+			signAndEncrypt( attributes, message );
+		}
 
 		spoolOrSend( message, attributes, context );
 
@@ -320,10 +314,11 @@ public class Mail extends Component {
 	}
 
 	private void appendMimeContent( MultiPartEmail message, StringBuffer buffer, IStruct attributes, IBoxContext context, Array mailParams, Array mailParts ) {
-		String mimeAttach = attributes.getAsString( MailKeys.mimeAttach );
+		String	mimeAttach	= attributes.getAsString( MailKeys.mimeAttach );
+		Boolean	remove		= attributes.getAsBoolean( MailKeys.remove );
 		if ( mimeAttach != null ) {
 			try {
-				message.attach( Path.of( mimeAttach ), StandardOpenOption.READ );
+				message.attach( Path.of( mimeAttach ), remove ? StandardOpenOption.DELETE_ON_CLOSE : StandardOpenOption.READ );
 			} catch ( EmailException e ) {
 				throw new BoxRuntimeException(
 				    "An error occurred while attempting to attach the file " + mimeAttach,
@@ -358,7 +353,7 @@ public class Mail extends Component {
 			    Path filePath = Path.of( param.getAsString( Key.file ) );
 			    try {
 				    if ( param.get( MailKeys.disposition ) == null ) {
-					    message.attach( filePath, StandardOpenOption.READ );
+					    message.attach( filePath, remove ? StandardOpenOption.DELETE_ON_CLOSE : StandardOpenOption.READ );
 				    } else {
 					    EmailAttachment attachment = new EmailAttachment();
 					    attachment.setPath( filePath.toAbsolutePath().toString() );
@@ -442,6 +437,7 @@ public class Mail extends Component {
 	void spoolOrSend( Email message, IStruct attributes, IBoxContext context ) {
 		IStruct	moduleSettings	= runtime.getModuleService().getModuleSettings( MailKeys._MODULE_NAME );
 		Boolean	spoolEnable		= attributes.getAsBoolean( MailKeys.spoolEnable );
+		String	priority		= attributes.getAsString( Key.priority );
 		String	messageId		= null;
 		if ( spoolEnable == null ) {
 			spoolEnable = moduleSettings.getAsBoolean( MailKeys.spoolEnable );
@@ -478,6 +474,20 @@ public class Mail extends Component {
 			}
 		}
 
+	}
+
+	private void signAndEncrypt( IStruct attributes, Email message ) {
+		// Encryption attributes
+		Boolean	sign				= attributes.getAsBoolean( MailKeys.sign );
+		String	keystore			= attributes.getAsString( MailKeys.keystore );
+		String	keystorePassword	= attributes.getAsString( MailKeys.keystorePassword );
+		String	keyAlias			= attributes.getAsString( MailKeys.keyAlias );
+		String	keyPassword			= attributes.getAsString( MailKeys.keyPassword );
+		Boolean	encrypt				= attributes.getAsBoolean( MailKeys.encrypt );
+		String	recipientCert		= attributes.getAsString( MailKeys.recipientCert );
+		String	encryptionAlgorithm	= attributes.getAsString( MailKeys.encryptionAlgorithm );
+		// TODO
+		throw new BoxRuntimeException( "Email signatures and encryption are not yet implemented." );
 	}
 
 }
