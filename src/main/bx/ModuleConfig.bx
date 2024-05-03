@@ -17,6 +17,7 @@ class {
 	property name="moduleRecord";
 	property name="boxRuntime";
 	property name="log";
+	property name="Key" inject="java:ortus.boxlang.runtime.scopes.Key";
 
 	/**
 	 * --------------------------------------------------------------------------
@@ -36,17 +37,17 @@ class {
 	 * The BoxLang mapping for your module.  All BoxLang modules are registered with an internal
 	 * mapping prefix of : bxModules.{this.mapping}, /bxmodules/{this.mapping}. Ex: bxModules.test, /bxmodules/test
 	 */
-	this.mapping = "test";
+	this.mapping = "mail";
 
 	/**
 	 * Who built the module
 	 */
-	this.author = "Luis Majano";
+	this.author = "Jon Clausen";
 
 	/**
 	 * The module description
 	 */
-	this.description = "This module does amazing things";
+	this.description = "This module sends and spools mail";
 
 	/**
 	 * The module web URL
@@ -73,7 +74,24 @@ class {
 		 */
 		settings = {
 			loadedOn : now(),
-			loadedBy : "Luis Majano"
+			mailServers : [],
+			defaultEncoding : "utf-8",
+			spoolEnable : true,
+			// Spool interval, in minutes
+			spoolInterval : .50,
+			connectionTimeout : nullValue(),
+			downloadUndeliveredAttachments: false,
+			signMesssage: nullValue(),
+			signKeystore: nullValue(),
+			signKeystorePassword: nullValue(),
+			signKeyAlias: nullValue(),
+			logEnabled: true,
+			logSeverity: "ERROR",
+			// The maximum time to retain entries in the spool which are unsent - default unlimited
+			spoolTimeout: 0,
+			bounceTimeout: 0,
+			spoolDirectory: variables.boxRuntime.getRuntimeHome().toString() & "/mail/unsent",
+			bounceDirectory: variables.boxRuntime.getRuntimeHome().toString() & "/mail/bounced"
 		};
 
 		/**
@@ -90,34 +108,43 @@ class {
 		}
 
 		/**
-		 * DataSources can be defined by a module and they will be registered
-		 * for you in the runtime
-		 */
-		datasources = {
-			// { name="MyDSN", class="coldbox.system.datasources.ColdBoxDataSource", properties={dsn="mydsn"} }
-		};
-
-		/**
 		 * The module interceptors to register into the runtime
 		 */
-		interceptors = [
-			// { class="path.to.Interceptor", properties={} }
-			{ class : "#moduleRecord.invocationPath#.interceptors.Listener", properties : {
-				createdOn : now(),
-				by : "Luis Majano"
-			} }
-		];
+		interceptors = [];
 
 		/**
 		 * A list of custom interception points to register into the runtime
 		 */
-		customInterceptionPoints = [ "onBxTestModule" ];
+		customInterceptionPoints = [
+			"onMailInvocation",
+			"onMailDispatch",
+			"onMailSent",
+			"onMailBounce"
+		];
 	}
 
 	/**
 	 * Called by the ModuleService on module activation
 	 */
 	function onLoad(){
+		println( variables.boxRuntime.getConfiguration().runtime.modules.mail.settings );
+		// test for any legacy CFConfig formatted settings
+		if( settings.mailServers.isEmpty() ){
+			// var baseConfig = variables.boxRuntime
+// 									.getConfiguration()
+// 									.runtime
+// 									.getBaseConfig();
+
+// 			baseConfig.keyArray()
+// 						.filter( key -> lcase( left( key, 4 ) ) == "mail" )
+// 						.each( key => {
+// 							if( key == "mailServers" ){
+// 								this.settings.mailServers = baseConfig.mailServers;
+// 							} else {
+// 								this.settings[ right( key, len( key ) - 4 ) ] = baseConfig[ key ];
+// 							}
+// 						 } );
+		}
 
 	}
 

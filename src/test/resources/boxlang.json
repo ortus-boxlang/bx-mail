@@ -1,0 +1,26 @@
+{
+	"runtime": {
+		"modulesDirectory": [
+			"${user-dir}/src/main",
+			"${user-dir}/src/test/resources/modules"
+		],
+		"modules": {
+			"mail": {
+				"settings": {
+					"mailServers": [
+						{
+							"tls": false,
+							"password": "",
+							"idleTimeout": "10000",
+							"lifeTimeout": "60000",
+							"port": "25",
+							"username": "",
+							"ssl": false,
+							"smtp": "127.0.0.1"
+						}
+					]
+				}
+			}
+		}
+	}
+}

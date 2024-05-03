@@ -1,6 +1,7 @@
 .gradle
 build/**
 !gradle/wrapper/gradle-wrapper.jar
+grapher/*
 
 ### IntelliJ IDEA ###
 .idea/
@@ -11,4 +12,5 @@ build/**
 ### BOXLANG ###
 /libs/
 src/test/resources/libs/*
+src/test/resources/tmp/*
 !src/test/resources/libs/.gitkeep

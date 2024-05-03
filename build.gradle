@@ -25,6 +25,7 @@ repositories {
 }
 
 dependencies {
+	implementation 'org.apache.commons:commons-email:1.6.0'
 	// Until BoxLang is published to Maven Central
 	// Look for it in the local build directory
 	// You must run `./gradle build -x test` in the BoxLang project
@@ -35,6 +36,7 @@ dependencies {
     testImplementation "org.junit.jupiter:junit-jupiter:5.+"
 	testImplementation "org.mockito:mockito-core:5.+"
 	testImplementation "com.google.truth:truth:1.+"
+	testImplementation "org.jvnet.mock-javamail:mock-javamail:1.9"
 }
 
 java {
@@ -128,6 +130,9 @@ task createModuleStructure(type: Copy) {
 		include "${project.name}-${version}-all.jar"
         into 'libs'
     }
+	/*
+	* TODO: this may need to be changed back
+	*/
     from( 'src/main/bx' ) {
 		include '**/*.bx'
 		// Token Replacements Go Here
@@ -171,6 +176,10 @@ test {
     testLogging {
 		showStandardStreams = true
 	}
+	// Test mail transport settings so that it doesn't attempt to send through SMTP
+	systemProperty "mail.smtp.class", "org.jvnet.mock_javamail.MockTransport"
+	systemProperty "mail.pop3.class", "org.jvnet.mock_javamail.MockStore"
+	systemProperty "mail.imap.class", "org.jvnet.mock_javamail.MockStore"
 }
 
 /**
