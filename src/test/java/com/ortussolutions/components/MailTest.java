@@ -271,4 +271,45 @@ public class MailTest {
 		assertEquals( "jclausen@ortussolutions.com", message.getFromAddress().toString() );
 	}
 
+	@DisplayName( "It can test a basic sending of mail with an inline attachment" )
+	@Test
+	public void testMultiPartWithInline() throws MessagingException, IOException {
+		variables.put( Key.of( "testFile" ), testBinaryFile );
+		instance.executeSource(
+		    """
+		                           	<bx:mail
+		          			from="jclausen@ortussolutions.com"
+		          			to="jclausen@ortussolutions.com"
+		          			subject="Mail Test"
+		          			server="127.0.0.1"
+		          			port="25"
+		          			spoolEnable="false"
+		          			debug="true"
+		          messageIdentifier="messageId"
+		          messageVariable="messageVar"
+		          		>
+		          <bx:mailpart type="text">
+		       Hello mail!
+		       </bx:mailpart>
+		          <bx:mailpart type="html">
+		       <h1>Hello mail!</h1>
+		       </bx:mailpart>
+		    <bx:mailparam file="#testFile#" fileName="foo.jpg" disposition="inline"/>
+		          </bx:mail>
+		                           """,
+		    context, BoxSourceType.BOXTEMPLATE );
+		assertTrue( variables.get( messageId ) instanceof String );
+		assertTrue( variables.get( messageVar ) instanceof Email );
+		Email message = ( Email ) variables.get( messageVar );
+		assertTrue( message.getEmailBody() instanceof MimeMultipart );
+		assertEquals( "Hello mail!", message.getEmailBody().getBodyPart( 0 ).getContent().toString().trim() );
+		assertEquals( "text/plain;charset=utf-8", message.getEmailBody().getBodyPart( 0 ).getContentType().toString() );
+		assertEquals( "<h1>Hello mail!</h1>", message.getEmailBody().getBodyPart( 1 ).getContent().toString().trim() );
+		assertEquals( "text/html;charset=utf-8", message.getEmailBody().getBodyPart( 1 ).getContentType().toString() );
+		assertEquals( "image/jpeg; name=foo.jpg", message.getEmailBody().getBodyPart( 2 ).getContentType().toString() );
+		assertEquals( "Mail Test", StringCaster.cast( message.getSubject() ).trim() );
+		assertEquals( "jclausen@ortussolutions.com", message.getToAddresses().get( 0 ).toString() );
+		assertEquals( "jclausen@ortussolutions.com", message.getFromAddress().toString() );
+	}
+
 }

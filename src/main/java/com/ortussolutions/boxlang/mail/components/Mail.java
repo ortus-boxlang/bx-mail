@@ -363,6 +363,9 @@ public class Mail extends Component {
 					    EmailAttachment attachment = new EmailAttachment();
 					    attachment.setPath( filePath.toAbsolutePath().toString() );
 					    attachment.setDisposition( param.getAsString( MailKeys.disposition ) );
+					    if ( param.containsKey( MailKeys.fileName ) ) {
+						    attachment.setName( param.getAsString( MailKeys.fileName ) );
+					    }
 					    if ( param.get( Key.description ) != null ) {
 						    attachment.setDescription( param.getAsString( Key.description ) );
 					    }
