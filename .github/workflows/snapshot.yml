@@ -44,15 +44,16 @@ jobs:
       - name: Format Java Source
         run: ./gradlew spotlessApply --stacktrace
 
-      - name: Format BoxLang Source
-        uses: Ortus-Solutions/commandbox-action@v1.0.2
-        with:
-          cmd: run-script format
+      # Neither of these tasks will work until cfformat is updated to handle `.bx` files
+      # - name: Format BoxLang Source
+      #   uses: Ortus-Solutions/commandbox-action@v1.0.3
+      #   with:
+      #     cmd: run-script format
 
-      - name: Commit Format Changes
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: Apply cfformat changes
+      # - name: Commit Format Changes
+      #   uses: stefanzweifel/git-auto-commit-action@v5
+      #   with:
+      #     commit_message: Apply cfformat changes
 
   #############################################
   # Build Snapshot Release

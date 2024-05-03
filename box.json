@@ -37,6 +37,10 @@
 	],
 	"scripts": {
 		"setupTemplate": "task run taskFile=src/build/SetupTemplate.cfc",
-		"onRelease": "publish"
+		"onRelease": "publish",
+		"lint": "cflint src/main/bx/**.bx --text --html --json --!exitOnError --suppress",
+		"format": "cfformat run src/main/bx --overwrite",
+		"format:check": "cfformat check src/main/bx",
+		"format:watch": "cfformat watch src/main/bx --overwrite --timeIt"
 	}
 }
