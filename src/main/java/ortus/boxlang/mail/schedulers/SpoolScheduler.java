@@ -50,9 +50,9 @@ public class SpoolScheduler extends BaseScheduler {
 			    spoolCache,
 			    Key.boxCacheProvider,
 			    Struct.of(
-			        Key.objectStore, MailKeys.fileSystemStore,
-			        Key.directory, moduleSettings.get( MailKeys.spoolDirectory ),
-			        Key.defaultTimeout, moduleSettings.get( MailKeys.spoolTimeout ),
+			        Key.objectStore, MailKeys.fileSystemStore.getName(),
+			        Key.directory, moduleSettings.getAsString( MailKeys.spoolDirectory ),
+			        Key.defaultTimeout, moduleSettings.getAsInteger( MailKeys.spoolTimeout ),
 			        Key.useLastAccessTimeouts, false,
 			        Key.evictCount, 0
 			    )
@@ -64,9 +64,9 @@ public class SpoolScheduler extends BaseScheduler {
 			    bounceCache,
 			    Key.boxCacheProvider,
 			    Struct.of(
-			        Key.objectStore, MailKeys.fileSystemStore,
-			        Key.directory, moduleSettings.get( MailKeys.bounceDirectory ),
-			        Key.defaultTimeout, moduleSettings.get( MailKeys.bounceTimeout ),
+			        Key.objectStore, MailKeys.fileSystemStore.getName(),
+			        Key.directory, moduleSettings.getAsString( MailKeys.bounceDirectory ),
+			        Key.defaultTimeout, moduleSettings.getAsInteger( MailKeys.bounceTimeout ),
 			        Key.useLastAccessTimeouts, false,
 			        Key.evictCount, 0
 			    )
