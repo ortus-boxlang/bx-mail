@@ -15,7 +15,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.ortussolutions.boxlang.mail.util;
+package ortus.boxlang.mail.util;
 
 import ortus.boxlang.runtime.scopes.Key;
 

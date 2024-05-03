@@ -1,4 +1,4 @@
-package com.ortussolutions.boxlang.mail.schedulers;
+package ortus.boxlang.mail.schedulers;
 
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -8,9 +8,8 @@ import org.apache.commons.mail.EmailException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.ortussolutions.boxlang.mail.components.Mail;
-import com.ortussolutions.boxlang.mail.util.MailKeys;
-
+import ortus.boxlang.mail.components.Mail;
+import ortus.boxlang.mail.util.MailKeys;
 import ortus.boxlang.runtime.BoxRuntime;
 import ortus.boxlang.runtime.async.tasks.BaseScheduler;
 import ortus.boxlang.runtime.async.tasks.ScheduledTask;
