@@ -130,7 +130,6 @@ class {
 	 * Called by the ModuleService on module activation
 	 */
 	function onLoad(){
-		println( variables.boxRuntime.getConfiguration().runtime.modules.mail.settings );
 		// test for any legacy CFConfig formatted settings
 		if( settings.mailServers.isEmpty() ){
 			// var baseConfig = variables.boxRuntime
