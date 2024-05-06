@@ -15,65 +15,62 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package ortus.boxlang.mail.components;
+package ortus.boxlang.modules.mail.components;
 
-import java.util.Set;
-
-import org.apache.commons.text.WordUtils;
-
-import ortus.boxlang.mail.util.MailKeys;
+import ortus.boxlang.modules.mail.util.MailKeys;
 import ortus.boxlang.runtime.components.Attribute;
 import ortus.boxlang.runtime.components.BoxComponent;
 import ortus.boxlang.runtime.components.Component;
 import ortus.boxlang.runtime.context.IBoxContext;
 import ortus.boxlang.runtime.scopes.Key;
 import ortus.boxlang.runtime.types.IStruct;
-import ortus.boxlang.runtime.validation.Validator;
 
-@BoxComponent( allowsBody = true, requiresBody = true )
-public class MailPart extends Component {
+@BoxComponent( allowsBody = false )
+public class MailParam extends Component {
 
-	public MailPart() {
+	public MailParam() {
 		super();
 		declaredAttributes = new Attribute[] {
-		    new Attribute( Key.type, "string", Set.of(
-		        Validator.REQUIRED,
-		        Validator.NON_EMPTY
-		    ) ), // "mime type"
-		    new Attribute( Key.charset, "string", "utf-8" ), // "character encoding"
-		    new Attribute( MailKeys.wrapText, "integer" ), // "number"
+		    new Attribute( Key._NAME, "string" ), // "header name"
+		    new Attribute( Key.value, "string" ), // "header value"
+		    new Attribute( MailKeys.contentID, "string" ), // "content ID"
+		    new Attribute( MailKeys.disposition, "string" ), // "disposition type"
+		    new Attribute( Key.file, "string" ), // "file path"
+		    new Attribute( MailKeys.fileName, "string" ), // "name of the file to be sent as attachment"
+		    new Attribute( Key.type, "string" ), // media type"
 		};
 	}
 
 	/**
-	 * Processes a mail part within the body of a mail component
+	 * Process a mail parameter within the body of a Mail component
 	 *
 	 * @param context        The context in which the Component is being invoked
 	 * @param attributes     The attributes to the Component
 	 * @param body           The body of the Component
 	 * @param executionState The execution state of the Component
 	 *
-	 * @attribute.type The mime type of the mail part
+	 * @attribute.name The header name
 	 *
-	 * @attribute.charset The character encoding of the mail part
+	 * @attribute.value The header value
 	 *
-	 * @attribute.wrapText The number of characters to wrap the mail part at
+	 * @attribute.contentID The content ID
+	 *
+	 * @attribute.disposition The disposition type
+	 *
+	 * @attribute.file The file path
+	 *
+	 * @attribute.fileName The name of the file to be sent as an attachment
+	 *
+	 * @attribute.type The media type
 	 *
 	 */
 	public BodyResult _invoke( IBoxContext context, IStruct attributes, ComponentBody body, IStruct executionState ) {
 		IStruct parentState = context.findClosestComponent( MailKeys.Mail );
 		if ( parentState == null ) {
-			throw new RuntimeException( "MailPart must be nested in the body of an Mail component" );
+			throw new RuntimeException( "MailParam must be nested in the body of an Mail component" );
 		}
-		Integer			wrapText	= parentState.getAsInteger( MailKeys.wrapText );
-
-		StringBuffer	buffer		= new StringBuffer();
-
-		processBody( context, body, buffer );
-
-		attributes.put( Key.result, wrapText != null ? WordUtils.wrap( buffer.toString(), wrapText ) : buffer.toString() );
 		// Set our data into the HTTP component for it to use
-		parentState.getAsArray( MailKeys.mailParts ).add( attributes );
+		parentState.getAsArray( MailKeys.mailParams ).add( attributes );
 
 		return DEFAULT_RETURN;
 	}

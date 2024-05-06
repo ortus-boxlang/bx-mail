@@ -1,4 +1,4 @@
-package ortus.boxlang.mail.schedulers;
+package ortus.boxlang.modules.mail.schedulers;
 
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -8,8 +8,8 @@ import org.apache.commons.mail.EmailException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import ortus.boxlang.mail.components.Mail;
-import ortus.boxlang.mail.util.MailKeys;
+import ortus.boxlang.modules.mail.components.Mail;
+import ortus.boxlang.modules.mail.util.MailKeys;
 import ortus.boxlang.runtime.BoxRuntime;
 import ortus.boxlang.runtime.async.tasks.BaseScheduler;
 import ortus.boxlang.runtime.async.tasks.ScheduledTask;
@@ -85,7 +85,7 @@ public class SpoolScheduler extends BaseScheduler {
 
 	/**
 	 * Processess the spool according to the settings
-	 * 
+	 *
 	 * @return
 	 */
 	protected static IStruct processSpool() {

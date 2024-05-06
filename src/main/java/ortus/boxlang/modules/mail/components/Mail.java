@@ -15,7 +15,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package ortus.boxlang.mail.components;
+package ortus.boxlang.modules.mail.components;
 
 import java.net.IDN;
 import java.nio.file.Path;
@@ -37,7 +37,7 @@ import org.apache.commons.mail.SimpleEmail;
 import org.apache.commons.mail.util.IDNEmailAddressConverter;
 import org.apache.commons.text.WordUtils;
 
-import ortus.boxlang.mail.util.MailKeys;
+import ortus.boxlang.modules.mail.util.MailKeys;
 import ortus.boxlang.runtime.components.Attribute;
 import ortus.boxlang.runtime.components.BoxComponent;
 import ortus.boxlang.runtime.components.Component;
