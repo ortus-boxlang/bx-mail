@@ -192,14 +192,16 @@ task downloadBoxLang( type: Download ) {
 	doFirst {
 		file( "src/test/resources/libs" ).mkdirs()
 	}
-    // Configure the URL of the file to download
-    src "https://ortus-temp.s3.amazonaws.com/jericho/libs/boxlang-${boxlangVersion}-all.jar"
-    // Specify the destination directory for the downloaded file
-    dest "src/test/resources/libs/boxlang-${boxlangVersion}-all.jar"
+	// Configure the URLs of the files to download
+	src([
+		"https://downloads.ortussolutions.com/ortussolutions/boxlang/${boxlangVersion}/boxlang-${boxlangVersion}-all.jar"//,
+		// "https://downloads.ortussolutions.com/ortussolutions/boxlang-runtimes/boxlang-web-support/${boxlangVersion}/boxlang-web-support-${boxlangVersion}.jar"
+	])
+	// Specify the destination directories for the downloaded files
+	dest "src/test/resources/libs/"
     overwrite true
     onlyIfModified false
 }
-
 /**
  * Project Wide Helper function
  * This is not a task, but a reusable UDF

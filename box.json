@@ -11,7 +11,7 @@
 	},
 	"bugs": "https://github.com/boxlang-modules/bx-mail/issues",
 	"slug": "bx-mail",
-	"shortDescription": "Module template for BoxLang modules",
+	"shortDescription": "Boxlang module which adds mail funcitionality, components, and methods.",
 	"type": "boxlang-modules",
 	"keywords": ["boxlang"],
 	"boxlang": {
