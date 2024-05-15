@@ -19,7 +19,7 @@
 		"moduleName": "mail"
 	},
 	"private": false,
-	"unlisted": true,
+	"listed": false,
 	"license": [
 		{
 			"type": "Apache-2.0",
