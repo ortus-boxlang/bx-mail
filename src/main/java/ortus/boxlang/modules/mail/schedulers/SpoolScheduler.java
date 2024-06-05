@@ -141,7 +141,7 @@ public class SpoolScheduler extends BaseScheduler {
 	}
 
 	protected static void onSpoolFailure( ScheduledTask task, Throwable exception ) {
-		System.out.println( "Spool Task failed: " + exception.getMessage() );
+		logger.debug( "Spool Task failed: " + exception.getMessage() );
 	}
 
 	/**
@@ -149,7 +149,7 @@ public class SpoolScheduler extends BaseScheduler {
 	 */
 	@Override
 	public void onShutdown() {
-		System.out.println( "[onShutdown] ==> The ExampleScheduler has been shutdown" );
+		logger.debug( "Mail Spool Scheduler has been shutdown." );
 	}
 
 	/**
@@ -157,7 +157,7 @@ public class SpoolScheduler extends BaseScheduler {
 	 */
 	@Override
 	public void onStartup() {
-		System.out.println( "[onStartup] ==> The ExampleScheduler has been started" );
+		logger.debug( "The Mail Spool Scheduler has been started" );
 	}
 
 	/**
@@ -169,7 +169,7 @@ public class SpoolScheduler extends BaseScheduler {
 	 */
 	@Override
 	public void onAnyTaskError( ScheduledTask task, Exception exception ) {
-		System.out.println( "[onAnyTaskError] ==> " + task.getName() + " ran into an error: " + exception.getMessage() );
+		logger.error( "An error occurred while execute the spool task " + task.getName() + ". The messge received was: " + exception.getMessage() );
 	}
 
 	/**
@@ -181,29 +181,7 @@ public class SpoolScheduler extends BaseScheduler {
 	 */
 	@Override
 	public void onAnyTaskSuccess( ScheduledTask task, Optional<?> result ) {
-		System.out.println( "[onAnyTaskSuccess] ==>  " + task.getName() + " task successful!" );
-	}
-
-	/**
-	 * Called before ANY task runs
-	 *
-	 * @task The task about to be executed
-	 */
-	@Override
-	public void beforeAnyTask( ScheduledTask task ) {
-		System.out.println( "[beforeAnyTask] ==> Before task: " + task.getName() );
-	}
-
-	/**
-	 * Called after ANY task runs
-	 *
-	 * @task The task that got executed
-	 *
-	 * @result The result (if any) that the task produced
-	 */
-	@Override
-	public void afterAnyTask( ScheduledTask task, Optional<?> result ) {
-		System.out.println( "[afterAnyTask] ==> After task: " + task.getName() );
+		logger.debug( "Mail Spool scheduled task " + task.getName() + " successfully completed." );
 	}
 
 }
