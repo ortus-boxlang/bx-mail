@@ -5,7 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.BufferedInputStream;
 import java.io.IOException;
-import java.net.URL;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.file.Path;
 import java.util.stream.Collectors;
 
@@ -44,30 +45,35 @@ public class MailTest {
 	static String		tmpDirectory	= "src/test/resources/tmp/MailTest";
 
 	@BeforeAll
-	public static void setUp() throws IOException {
+	public static void setUp() throws IOException, URISyntaxException {
 		instance = BoxRuntime.getInstance( true, Path.of( "src/test/resources/boxlang.json" ).toString() );
+
 		System.out.println(
 		    "Schedulers : " + instance.getSchedulerService().getSchedulers().entrySet().stream().map( entry -> KeyCaster.cast( entry.getKey() ).getName() )
 		        .collect( Collectors.joining( "," ) ) );
 
-		if ( !FileSystemUtil.exists( testBinaryFile ) ) {
+		System.out.println( "Temp Directory Exists " + FileSystemUtil.exists( tmpDirectory ) );
+		if ( !FileSystemUtil.exists( tmpDirectory ) ) {
 			FileSystemUtil.createDirectory( tmpDirectory, true, null );
-			BufferedInputStream urlStream = new BufferedInputStream( new URL( testURLImage ).openStream() );
-			FileSystemUtil.write( testBinaryFile, urlStream.readAllBytes(), true );
-			assertTrue( FileSystemUtil.exists( testBinaryFile ) );
 		}
 	}
 
 	@BeforeEach
-	public void setupEach() {
+	public void setupEach() throws IOException, URISyntaxException {
 		context		= new ScriptingRequestBoxContext( instance.getRuntimeContext() );
 		variables	= context.getScopeNearby( VariablesScope.name );
 		variables.clear();
+		System.out.println( "Test file exists " + FileSystemUtil.exists( testBinaryFile ) );
+		if ( !FileSystemUtil.exists( testBinaryFile ) ) {
+			BufferedInputStream urlStream = new BufferedInputStream( new URI( testURLImage ).toURL().openStream() );
+			FileSystemUtil.write( testBinaryFile, urlStream.readAllBytes(), true );
+			System.out.println( "Test file exists " + FileSystemUtil.exists( testBinaryFile ) );
+			assertTrue( FileSystemUtil.exists( testBinaryFile ) );
+		}
 	}
 
 	@AfterAll
 	public static void teardown() throws IOException {
-
 		if ( FileSystemUtil.exists( tmpDirectory ) ) {
 			FileSystemUtil.deleteDirectory( tmpDirectory, true );
 		}
@@ -190,10 +196,12 @@ public class MailTest {
 		assertTrue( variables.get( messageVar ) instanceof Email );
 		Email message = ( Email ) variables.get( messageVar );
 		assertTrue( message.getEmailBody() instanceof MimeMultipart );
-		assertEquals( "Hello mail!", message.getEmailBody().getBodyPart( 0 ).getContent().toString().trim() );
-		assertEquals( "text/plain;charset=utf-8", message.getEmailBody().getBodyPart( 0 ).getContentType().toString() );
-		assertEquals( "<h1>Hello mail!</h1>", message.getEmailBody().getBodyPart( 1 ).getContent().toString().trim() );
-		assertEquals( "text/html;charset=utf-8", message.getEmailBody().getBodyPart( 1 ).getContentType().toString() );
+		MimeMultipart	part1	= ( MimeMultipart ) message.getEmailBody().getBodyPart( 0 ).getContent();
+		MimeMultipart	part2	= ( MimeMultipart ) message.getEmailBody().getBodyPart( 1 ).getContent();
+		assertEquals( "Hello mail!", part1.getBodyPart( 0 ).getContent().toString().trim() );
+		assertEquals( "text/plain;charset=utf-8", part1.getBodyPart( 0 ).getContentType().toString() );
+		assertEquals( "<h1>Hello mail!</h1>", part2.getBodyPart( 0 ).getContent().toString().trim() );
+		assertEquals( "text/html;charset=utf-8", part2.getBodyPart( 0 ).getContentType().toString() );
 		assertEquals( "Mail Test", StringCaster.cast( message.getSubject() ).trim() );
 		assertEquals( "jclausen@ortussolutions.com", message.getToAddresses().get( 0 ).toString() );
 		assertEquals( "jclausen@ortussolutions.com", message.getFromAddress().toString() );
@@ -201,7 +209,7 @@ public class MailTest {
 
 	@DisplayName( "It can test a basic sending of mail with a mime attachment" )
 	@Test
-	public void testMailMimeAttach() {
+	public void testMailMimeAttach() throws IOException, MessagingException {
 		variables.put( Key.of( "testFile" ), testBinaryFile );
 		instance.executeSource(
 		    """
@@ -223,8 +231,9 @@ public class MailTest {
 		    context, BoxSourceType.BOXTEMPLATE );
 		assertTrue( variables.get( messageId ) instanceof String );
 		assertTrue( variables.get( messageVar ) instanceof Email );
-		Email message = ( Email ) variables.get( messageVar );
-		assertEquals( "Here's an image!", StringCaster.cast( message.getContent() ).trim() );
+		Email			message	= ( Email ) variables.get( messageVar );
+		MimeMultipart	part1	= ( MimeMultipart ) message.getEmailBody().getBodyPart( 0 ).getContent();
+		assertEquals( "Here's an image!", part1.getBodyPart( 0 ).getContent().toString().trim() );
 		assertTrue( ( ( MultiPartEmail ) message ).isBoolHasAttachments() );
 		assertEquals( "jclausen@ortussolutions.com", message.getToAddresses().get( 0 ).toString() );
 		assertEquals( "jclausen@ortussolutions.com", message.getFromAddress().toString() );
@@ -232,7 +241,7 @@ public class MailTest {
 
 	@DisplayName( "It can test a basic sending of mail with a mime attachment, deleting the file after the message is sent" )
 	@Test
-	public void testMailMimeAttachRemove() throws InterruptedException {
+	public void testMailMimeAttachRemove() throws InterruptedException, IOException, MessagingException {
 		variables.put( Key.of( "testFile" ), testBinaryFile );
 		assertTrue( FileSystemUtil.exists( testBinaryFile ) );
 		instance.executeSource(
@@ -256,8 +265,9 @@ public class MailTest {
 		    context, BoxSourceType.BOXTEMPLATE );
 		assertTrue( variables.get( messageId ) instanceof String );
 		assertTrue( variables.get( messageVar ) instanceof Email );
-		Email message = ( Email ) variables.get( messageVar );
-		assertEquals( "Here's an image!", StringCaster.cast( message.getContent() ).trim() );
+		Email			message	= ( Email ) variables.get( messageVar );
+		MimeMultipart	part1	= ( MimeMultipart ) message.getEmailBody().getBodyPart( 0 ).getContent();
+		assertEquals( "Here's an image!", part1.getBodyPart( 0 ).getContent().toString().trim() );
 		assertTrue( ( ( MultiPartEmail ) message ).isBoolHasAttachments() );
 		assertEquals( "jclausen@ortussolutions.com", message.getToAddresses().get( 0 ).toString() );
 		assertEquals( "jclausen@ortussolutions.com", message.getFromAddress().toString() );
@@ -298,10 +308,12 @@ public class MailTest {
 		Email message = ( Email ) variables.get( messageVar );
 		assertTrue( message.getEmailBody() instanceof MimeMultipart );
 		assertTrue( ( ( MultiPartEmail ) message ).isBoolHasAttachments() );
-		assertEquals( "Hello mail!", message.getEmailBody().getBodyPart( 0 ).getContent().toString().trim() );
-		assertEquals( "text/plain;charset=utf-8", message.getEmailBody().getBodyPart( 0 ).getContentType().toString() );
-		assertEquals( "<h1>Hello mail!</h1>", message.getEmailBody().getBodyPart( 1 ).getContent().toString().trim() );
-		assertEquals( "text/html;charset=utf-8", message.getEmailBody().getBodyPart( 1 ).getContentType().toString() );
+		MimeMultipart	part1	= ( MimeMultipart ) message.getEmailBody().getBodyPart( 0 ).getContent();
+		MimeMultipart	part2	= ( MimeMultipart ) message.getEmailBody().getBodyPart( 1 ).getContent();
+		assertEquals( "Hello mail!", part1.getBodyPart( 0 ).getContent().toString().trim() );
+		assertEquals( "text/plain;charset=utf-8", part1.getBodyPart( 0 ).getContentType().toString() );
+		assertEquals( "<h1>Hello mail!</h1>", part2.getBodyPart( 0 ).getContent().toString().trim() );
+		assertEquals( "text/html;charset=utf-8", part2.getBodyPart( 0 ).getContentType().toString() );
 		assertEquals( "Mail Test", StringCaster.cast( message.getSubject() ).trim() );
 		assertEquals( "jclausen@ortussolutions.com", message.getToAddresses().get( 0 ).toString() );
 		assertEquals( "jclausen@ortussolutions.com", message.getFromAddress().toString() );
@@ -338,10 +350,12 @@ public class MailTest {
 		assertTrue( variables.get( messageVar ) instanceof Email );
 		Email message = ( Email ) variables.get( messageVar );
 		assertTrue( message.getEmailBody() instanceof MimeMultipart );
-		assertEquals( "Hello mail!", message.getEmailBody().getBodyPart( 0 ).getContent().toString().trim() );
-		assertEquals( "text/plain;charset=utf-8", message.getEmailBody().getBodyPart( 0 ).getContentType().toString() );
-		assertEquals( "<h1>Hello mail!</h1>", message.getEmailBody().getBodyPart( 1 ).getContent().toString().trim() );
-		assertEquals( "text/html;charset=utf-8", message.getEmailBody().getBodyPart( 1 ).getContentType().toString() );
+		MimeMultipart	part1	= ( MimeMultipart ) message.getEmailBody().getBodyPart( 0 ).getContent();
+		MimeMultipart	part2	= ( MimeMultipart ) message.getEmailBody().getBodyPart( 1 ).getContent();
+		assertEquals( "Hello mail!", part1.getBodyPart( 0 ).getContent().toString().trim() );
+		assertEquals( "text/plain;charset=utf-8", part1.getBodyPart( 0 ).getContentType().toString() );
+		assertEquals( "<h1>Hello mail!</h1>", part2.getBodyPart( 0 ).getContent().toString().trim() );
+		assertEquals( "text/html;charset=utf-8", part2.getBodyPart( 0 ).getContentType().toString() );
 		assertEquals( "image/jpeg; name=foo.jpg", message.getEmailBody().getBodyPart( 2 ).getContentType().toString() );
 		assertEquals( "Mail Test", StringCaster.cast( message.getSubject() ).trim() );
 		assertEquals( "jclausen@ortussolutions.com", message.getToAddresses().get( 0 ).toString() );

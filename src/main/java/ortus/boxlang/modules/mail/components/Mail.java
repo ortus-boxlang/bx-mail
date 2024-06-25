@@ -17,13 +17,13 @@
  */
 package ortus.boxlang.modules.mail.components;
 
+import java.io.IOException;
 import java.net.IDN;
+import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.util.Set;
 import java.util.UUID;
 
-import javax.mail.BodyPart;
 import javax.mail.MessagingException;
 import javax.mail.Part;
 import javax.mail.internet.MimeBodyPart;
@@ -37,6 +37,7 @@ import org.apache.commons.mail.SimpleEmail;
 import org.apache.commons.mail.util.IDNEmailAddressConverter;
 import org.apache.commons.text.WordUtils;
 
+import ortus.boxlang.modules.mail.util.MailEncryptionUtil;
 import ortus.boxlang.modules.mail.util.MailKeys;
 import ortus.boxlang.runtime.components.Attribute;
 import ortus.boxlang.runtime.components.BoxComponent;
@@ -50,8 +51,10 @@ import ortus.boxlang.runtime.scopes.Key;
 import ortus.boxlang.runtime.types.Array;
 import ortus.boxlang.runtime.types.IStruct;
 import ortus.boxlang.runtime.types.Struct;
+import ortus.boxlang.runtime.types.exceptions.BoxIOException;
 import ortus.boxlang.runtime.types.exceptions.BoxRuntimeException;
 import ortus.boxlang.runtime.types.util.ListUtil;
+import ortus.boxlang.runtime.util.FileSystemUtil;
 import ortus.boxlang.runtime.validation.Validator;
 
 @BoxComponent( allowsBody = true, requiresBody = true )
@@ -196,13 +199,18 @@ public class Mail extends Component {
 		Array	mailParams	= executionState.getAsArray( MailKeys.mailParams );
 		Array	mailParts	= executionState.getAsArray( MailKeys.mailParts );
 
-		Email	message		= ( mimeAttach != null || mailParts.size() > 0 || mailParams.size() > 0 )
+		Email	message		= ( sign || encrypt || mimeAttach != null || mailParts.size() > 0 || mailParams.size() > 0 )
 		    ? new MultiPartEmail()
 		    : new SimpleEmail();
 
 		message.setDebug( debug );
 
 		message.setSubject( subject );
+
+		if ( messageType != null ) {
+			message.setContentType( messageType.toLowerCase() );
+		}
+
 		message.setCharset( charset == null ? moduleSettings.getAsString( MailKeys.defaultEncoding ) : charset );
 
 		if ( messageType == null ) {
@@ -214,9 +222,6 @@ public class Mail extends Component {
 		if ( message instanceof SimpleEmail ) {
 			message.setContent( wrapText != null ? WordUtils.wrap( buffer.toString(), wrapText ) : buffer.toString(), messageType );
 		} else {
-			if ( mailParts.size() == 0 ) {
-				message.setContent( wrapText != null ? WordUtils.wrap( buffer.toString(), wrapText ) : buffer.toString(), messageType );
-			}
 			appendMimeContent( ( MultiPartEmail ) message, buffer, attributes, context, mailParams, mailParts );
 		}
 
@@ -233,10 +238,6 @@ public class Mail extends Component {
 		setMessageServer( context, attributes, message );
 
 		setMessageRecipients( attributes, message );
-
-		if ( sign || encrypt ) {
-			signAndEncrypt( attributes, message );
-		}
 
 		spoolOrSend( message, attributes, context );
 
@@ -363,17 +364,28 @@ public class Mail extends Component {
 	 * @param mailParams
 	 * @param mailParts
 	 */
-	private void appendMimeContent( MultiPartEmail message, StringBuffer buffer, IStruct attributes, IBoxContext context, Array mailParams, Array mailParts ) {
+	private void appendMimeContent(
+	    MultiPartEmail message,
+	    StringBuffer buffer,
+	    IStruct attributes,
+	    IBoxContext context,
+	    Array mailParams,
+	    Array mailParts ) {
 		String	mimeAttach	= attributes.getAsString( MailKeys.mimeAttach );
 		Boolean	remove		= attributes.getAsBoolean( MailKeys.remove );
 		if ( mimeAttach != null ) {
+			Path filePath = Path.of( mimeAttach );
 			try {
-				message.attach( Path.of( mimeAttach ), remove ? StandardOpenOption.DELETE_ON_CLOSE : StandardOpenOption.READ );
-			} catch ( EmailException e ) {
-				throw new BoxRuntimeException(
-				    "An error occurred while attempting to attach the file " + mimeAttach,
-				    e
+				mailParams.add(
+				    Struct.of(
+				        MailKeys.disposition, null,
+				        Key.file, mimeAttach,
+				        MailKeys.fileName, filePath.getFileName().toString(),
+				        Key.type, Files.probeContentType( filePath )
+				    )
 				);
+			} catch ( IOException e ) {
+				throw new BoxIOException( e );
 			}
 		}
 		boolean hasContentParts = mailParts.size() > 0
@@ -382,7 +394,14 @@ public class Mail extends Component {
 		        .anyMatch(
 		            item -> item.getAsString( Key.type ).toLowerCase().contains( "text" ) || item.getAsString( Key.type ).toLowerCase().contains( "html" ) );
 		if ( !hasContentParts ) {
-			message.setContent( buffer.toString() );
+			if ( mailParams.size() == 0 ) {
+				message.setContent( buffer.toString() );
+				message.setContentType( "text/plain" );
+			} else {
+				message.setContentType( "multipart/mixed" );
+				appendMessagePart( message, buffer.toString(), StringCaster.cast( attributes.getOrDefault( Key.type, "text/plain" ) ),
+				    attributes.getAsString( Key.charset ), attributes );
+			}
 		} else {
 			mailParts.stream().map( StructCaster::cast )
 			    .forEach( part -> {
@@ -392,7 +411,7 @@ public class Mail extends Component {
 				    } else if ( mimeType.contains( "text" ) ) {
 					    mimeType = "text/plain";
 				    }
-				    appendMessagePart( message, part.get( Key.result ), mimeType, attributes.getAsString( Key.charset ) );
+				    appendMessagePart( message, part.get( Key.result ), mimeType, attributes.getAsString( Key.charset ), attributes );
 			    } );
 
 		}
@@ -402,12 +421,10 @@ public class Mail extends Component {
 		    .forEach( param -> {
 			    Path filePath = Path.of( param.getAsString( Key.file ) );
 			    try {
-				    if ( param.get( MailKeys.disposition ) == null ) {
-					    message.attach( filePath, remove ? StandardOpenOption.DELETE_ON_CLOSE : StandardOpenOption.READ );
-				    } else {
+				    if ( !attributes.getAsBoolean( MailKeys.sign ) && !attributes.getAsBoolean( MailKeys.encrypt ) ) {
 					    EmailAttachment attachment = new EmailAttachment();
 					    attachment.setPath( filePath.toAbsolutePath().toString() );
-					    attachment.setDisposition( param.getAsString( MailKeys.disposition ) );
+					    attachment.setDisposition( param.get( MailKeys.disposition ) != null ? param.getAsString( MailKeys.disposition ) : Part.ATTACHMENT );
 					    if ( param.containsKey( MailKeys.fileName ) ) {
 						    attachment.setName( param.getAsString( MailKeys.fileName ) );
 					    }
@@ -415,12 +432,22 @@ public class Mail extends Component {
 						    attachment.setDescription( param.getAsString( Key.description ) );
 					    }
 					    message.attach( attachment );
+				    } else {
+					    attributes.keySet().stream()
+					        .forEach( key -> param.putIfAbsent( key, attributes.get( key ) ) );
+					    appendMessagePart(
+					        message,
+					        FileSystemUtil.read( param.getAsString( Key.file ) ), Files.probeContentType( filePath ),
+					        attributes.getAsString( Key.charset ),
+					        param
+					    );
 				    }
+
 			    } catch ( EmailException e ) {
 				    throw new BoxRuntimeException(
-				        "An error occurred while attempting to attach the file " + filePath.toAbsolutePath().toString(),
-				        e
-				    );
+				        "An exception occured while attempting to attach the file " + filePath.toAbsolutePath().toString() + ". " + e.getMessage(), e );
+			    } catch ( IOException e ) {
+				    throw new BoxIOException( e );
 			    }
 
 		    } );
@@ -435,18 +462,35 @@ public class Mail extends Component {
 	 * @param mimeType
 	 * @param charset
 	 */
-	private void appendMessagePart( MultiPartEmail message, Object content, String mimeType, String charset ) {
+	private void appendMessagePart( MultiPartEmail message, Object content, String mimeType, String charset, IStruct attributes ) {
+		Boolean	encrypt	= attributes.getAsBoolean( MailKeys.encrypt );
+		Boolean	sign	= attributes.getAsBoolean( MailKeys.sign );
 		try {
+			MimeMultipart	mimePart	= new MimeMultipart();
+			MimeBodyPart	bodyPart	= new MimeBodyPart();
 			if ( content instanceof String ) {
-				message.addPart( StringCaster.cast( content ), mimeType + ";charset=" + charset );
+				bodyPart.setContent( StringCaster.cast( content ), mimeType + ";charset=" + charset );
 			} else {
-				MimeMultipart	mimePart	= new MimeMultipart();
-				BodyPart		bodyPart	= new MimeBodyPart();
-				bodyPart.setDisposition( Part.INLINE );
+				bodyPart.setDisposition( attributes.get( MailKeys.disposition ) == null ? Part.INLINE : attributes.getAsString( MailKeys.disposition ) );
+				if ( attributes.containsKey( MailKeys.fileName ) ) {
+					bodyPart.setFileName( attributes.getAsString( MailKeys.fileName ) );
+				} else if ( attributes.containsKey( Key.file ) ) {
+					bodyPart.setFileName( Path.of( attributes.getAsString( Key.file ) ).getFileName().toString() );
+				}
 				bodyPart.setContent( content, mimeType );
-				mimePart.addBodyPart( bodyPart );
-				message.addPart( mimePart );
 			}
+
+			if ( sign ) {
+				bodyPart = ( MimeBodyPart ) MailEncryptionUtil.signMessagePart( attributes, bodyPart ).getBodyPart( 0 );
+			}
+
+			if ( encrypt ) {
+				bodyPart = MailEncryptionUtil.encryptMessagePart( attributes, bodyPart );
+			}
+
+			mimePart.addBodyPart( bodyPart );
+			message.addPart( mimePart );
+
 		} catch ( MessagingException e ) {
 			throw new BoxRuntimeException( "An error occurred while attempting to attach content of type " + mimeType + " to the email", e );
 		} catch ( EmailException e ) {
@@ -547,26 +591,6 @@ public class Mail extends Component {
 			}
 		}
 
-	}
-
-	/**
-	 * Sign and/or encrypt the email
-	 *
-	 * @param attributes
-	 * @param message
-	 */
-	private void signAndEncrypt( IStruct attributes, Email message ) {
-		// Encryption attributes
-		Boolean	sign				= attributes.getAsBoolean( MailKeys.sign );
-		String	keystore			= attributes.getAsString( MailKeys.keystore );
-		String	keystorePassword	= attributes.getAsString( MailKeys.keystorePassword );
-		String	keyAlias			= attributes.getAsString( MailKeys.keyAlias );
-		String	keyPassword			= attributes.getAsString( MailKeys.keyPassword );
-		Boolean	encrypt				= attributes.getAsBoolean( MailKeys.encrypt );
-		String	recipientCert		= attributes.getAsString( MailKeys.recipientCert );
-		String	encryptionAlgorithm	= attributes.getAsString( MailKeys.encryptionAlgorithm );
-		// TODO
-		throw new BoxRuntimeException( "Email signatures and encryption are not yet implemented." );
 	}
 
 }
