@@ -7,120 +7,163 @@
 |:------------------------------------------------------:|
 ```
 
-<blockquote>
-	Copyright Since 2023 by Ortus Solutions, Corp
-	<br>
-	<a href="https://www.boxlang.io">www.boxlang.io</a> |
-	<a href="https://www.ortussolutions.com">www.ortussolutions.com</a>
-</blockquote>
+This module provides mail sending functionality to Boxlang
 
-<p>&nbsp;</p>
 
-This template can be used to create Ortus based BoxLang Modules.  To use, just click the `Use this Template` button in the github repository: https://github.com/boxlang-modules/module-template and run the setup task from where you cloned it.
+## Components 
 
-```bash
-box task run taskFile=src/build/SetupTemplate
+This module contributes the following Components to the language:
+
+* `mail` - the wrapping component for a mail operation
+  * The following attributes are available to the `mail` component
+    * `from` - Sender email address
+    * `to` - Comma-delimited list of recipient email addresses
+    * `charset` - The character encoding of the email
+    * `subject` - The email subject
+    * `server` - Optional SMTP server address
+    * `port` - Optional  SMTP server port
+    * `username` - Optional SMTP username
+    * `password` - Optional SMTP password
+    * `useSSL` - Optional true|false for SMTP Connection
+    * `useTLS` - true|false for SMTP TLS Connection
+    * `mailerid` - The header ID of the mailer
+    * `mimeAttach` - path of file to attach
+    * `type` - MIME type of the email
+    * `wrapText` - Wrap text after a certain number of characters has been reached
+    * `sign` - true|false  Whether to sign the mail message - requires keystore, keystorePassword, keyAlias, keyPassword
+    * `keystore` - The location of the keystore (Used when signing)
+    * `keystorePassword` - The password of the keystore (Used when signing)
+    * `keyAlias` - The alias of the private key to use for signing (Used when signing)
+    * `keyPassword` The password for the private key within the keystore (Used when signing)
+    * `encrypt` - true|false Whether to encrypt the mail message - requires recipientCert, encryptionAlgorithm
+    * `recipientCert` - The path to the public key certificate of the recipient (Used when encrypting)
+    * `encryptionAlgorithm` - The encryption algorithm to use (Used when encrypting).  One of DES_EDE3_CBC, RC2_CBC, AES128_CBC, AES192_CBC, AES256_CBC
+    * `debug` - true|false Whether to enable debug logging output
+* `mailparam` - the component which supplies a mail parameter to the operation, such as headers or files
+  * The following attributes are available to the `mailparam` component
+    * `name` - The header name ( if applicable )
+    * `value` - The header value ( if applicable )
+    * `contentID` - The content ID ( optional content id)
+    * `disposition` - The disposition type ( `inline` or `attachment` - if applicable )
+    * `file` - The file path of an attachment ( if applicable )
+    * `fileName` - An optional name of the file to be sent as an attachment ( if applicable )
+    * `type` - The media type ( if applicable )
+* `mailpart` - the component which supplies a message part ( e.g. "text", "html", etc ) to the mail operation
+  * The following attributes are available to the `mailpart` component
+    * `type` - The mime type of the mail part
+    * `charset` - The character encoding of the mail part
+    * `wrapText` - The number of characters to wrap the mail part at
+
+## Examples
+
+### Simple Email Example ( Script syntax )
+
+```javascript
+mail
+    from="jclausen@ortussolutions.com"
+    to="jclausen@ortussolutions.com"
+    subject="Hello from BoxLang Mail!"
+{
+    writeOutput( "Hello world!" );
+}
 ```
 
-The `SetupTemplate` task will ask you for your module name, id and description and configure the template for you! Enjoy!
+### Email with a single file attachment ( Templating syntax )
 
-## Directory Structure
-
-Here is a brief overview of the directory structure:
-
-* `.github/workflows` - These are the github actions to test and build the module via CI
-* `build` - This is a temporary non-sourced folder that contains the build assets for the module that gradle produces
-* `gradle` - The gradle wrapper and configuration
-* `src` - Where your module source code lives
-* `.cfformat.json` - A CFFormat using the Ortus Standards
-* `.editorconfig` - Smooth consistency between editors
-* `.gitattributes` - Git attributes
-* `.gitignore` - Basic ignores. Modify as needed.
-* `.markdownlint.json` - A linting file for markdown docs
-* `.ortus-java-style.xml` - Ortus Java Style for IntelliJ, VScode, Eclipse.
-* `box.json` - The box.json for your module used to publish to ForgeBox
-* `build.gradle` - The gradle build file for the module
-* `changelog.md` - A nice changelog tracking file
-* `CONTRIBUTING.md` - A contribution guideline
-* `gradlew` - The gradle wrapper
-* `gradlew.bat` - The gradle wrapper for windows
-* `ModuleConfig.cfc` - Your module's configuration. Modify as needed.
-* `readme.md` - Your module's readme. Modify as needed.
-* `settings.gradle` - The gradle settings file
-
-Here is a brief overview of the source directory structure:
-
-* `build` - Build scripts and assets
-* `main` - The main module source code
-  * `bx` - The BoxLang source code
-  * `ModuleConfig.bx` - The BoxLang module configuration
-    * `bifs` - BoxLang built-in functions
-    * `components` - BoxLang components
-    * `config` - BoxLang configuration, schedulers, etc.
-    * `interceptors` - BoxLang interceptors
-    * `libs` - Java libraries to use that are NOT managed by gradle
-    * `models` - BoxLang models
-  * `java` - Java source code
-  * `resources` - Resources for the module placed in final jar
-* `test`
-  * `bx` - The BoxLang test code
-  * `java` - Java test code
-  * `resources` - Resources for testing
-    * `libs` - BoxLang binary goes here for now.
-
-## Project Properties
-
-The project name is defined in the `settings.gradle` file.  You can change it there.
-The project version, BoxLang Version and JDK version is defined in the `build.gradle` file.  You can change it there.
-
-## Gradle Tasks
-
-Before you get started, you need to run the `downloadBoxLang` task in order to download the latest BoxLang binary until we publish to Maven.
-
-```bash
-gradle downloadBoxLang
+```javascript
+<bx:mail
+    from="jclausen@ortussolutions.com"
+    to="jclausen@ortussolutions.com"
+    subject="File For You"
+    mimeAttach="/path/to/my/file.pdf"
+>
+Here's a PDF for you!
+</bx:mail>
 ```
 
-This will store the binary under `/src/test/resources/libs` for you to use in your tests and compiler. Here are some basic tasks
+### MultiPart with text and html parts, with an attachment ( Templating syntax )
 
+```javascript
+<bx:mail
+	from="jclausen@ortussolutions.com"
+	to="jclausen@ortussolutions.com"
+	subject="Mail In Parts"
+>
 
-| Task                | Description                                                                                                        	|
-|---------------------|---------------------------------------------------------------------------------------------------------------------|
-| `build`             | The default lifecycle task that triggers the build process, including tasks like `clean`, `assemble`, and others. 	|
-| `clean`             | Deletes the `build` folders. It helps ensure a clean build by removing any previously generated artifacts.			|
-| `compileJava`       | Compiles Java source code files located in the `src/main/java` directory											|
-| `compileTestJava`   | Compiles Java test source code files located in the `src/test/java` directory										|
-| `dependencyUpdates` | Checks for updated versions of all dependencies															 			|
-| `downloadBoxLang`   | Downloads the latest BoxLang binary for testing																		|
-| `jar`               | Packages your project's compiled classes and resources into a JAR file `build/libs` folder							|
-| `javadoc`           | Generates the Javadocs for your project and places them in the `build/docs/javadoc` folder							|
-| `serviceLoader`     | Generates the ServiceLoader file for your project																	|
-| `spotlessApply`     | Runs the Spotless plugin to format the code																			|
-| `spotlessCheck`     | Runs the Spotless plugin to check the formatting of the code														|
-| `tasks`			  | Show all the available tasks in the project																			|
-| `test`              | Executes the unit tests in your project and produces the reports in the `build/reports/tests` folder				|
+<bx:mailpart type="text">
+Hello mail!
+</bx:mailpart>
 
-## Tests
+<bx:mailpart type="html">
+<h1>Hello mail!</h1>
+</bx:mailpart>
 
-Please use the `src/test` folder for your unit tests.  You can either test using TestBox o JUnit if it's Java.
+<bx:mailparam file="/path/to/my/file.pdf" fileName="PDFForYou.pdf" type="application/x-pdf" />
 
-## Github Actions Automation
+</bx:mail>
+```
 
-The github actions will clone, test, package, deploy your module to ForgeBox and the Ortus S3 accounts for API Docs and Artifacts.  So please make sure the following environment variables are set in your repository.
+## Configuration
 
-> Please note that most of them are already defined at the org level
+Mail server connectivity may be provided either via runtime configuration ( e.g. `.boxlang.json` ) or via the attributes allowed by the mail component ( see above ).  An example configuration is provided below:
 
-* `FORGEBOX_TOKEN` - The Ortus ForgeBox API Token
-* `AWS_ACCESS_KEY` - The travis user S3 account
-* `AWS_ACCESS_SECRET` - The travis secret S3
+```json
+{
+	"modules": {
 
-> Please contact the admins in the `#infrastructure` channel for these credentials if needed
+		"mail": {
+			// An array of mail servers
+			"mailServers" : [
+				{
+					// The SMTP Server
+					"smtp": "127.0.0.1",
+					// The SMTP Port
+					"port": "25",
+					// The SMTP Username
+					"username": "",
+					// The SMTP Password
+					"password": "",
+					// Whether to use SSL in connection to the SMTP server
+					"ssl": false,
+					// Whether to use TLS in connection to the SMTP server
+					"tls": false,
+					// The idle timeout, in milliseconds, for connection to the mail server
+					"idleTimeout": "10000",
+					// The timeout, in milliseconds before giving up on attempts to connect
+					"lifeTimeout": "60000"
+				}
+			],
+			// The default encoding to use for outbound email
+			"defaultEncoding" : "utf-8",
+			// Whether to enable spooling of mail - when false, mail will be sent immediately
+			"spoolEnable" : true,
+			// The interval in fractions of seconds to process the spool
+			"spoolInterval" : .50,
+			// The connection timeout - defaults to null, meaning no connection timeout attempting to connect to the mail server
+			"connectionTimeout" : null,
+			// The following attributes are used for signing of all outbound emails
+			"signMesssage" : false,
+			// The signature keystore
+			"signKeystore" : null,
+			// The signature keystore password
+			"signKeystorePassword" : null,
+			// The private key alias within the keystore
+			"signKeyAlias" : null,
+			// The Key password within the keystore
+			"signKeyPassword" : null,
+			// Whether to enable mail logging
+			"logEnabled" : true,
+			// The severity level for logging
+			"logSeverity" : "ERROR",
+			// The time in minutes retain a message in the spool before the message is discarded - defaults to infinite
+			"spoolTimeout" : 0,
+			//  The time in minutes to try resending email before it is considered bounced - defaults to infinite
+			"bounceTimeout" : 0,
+			// Optional directory settings for the spool ( Defaults to BoxLang runtime home )
+			"spoolDirectory" : "/usr/local/boxlang/mail/unsent",
+			"bounceDirectory" : "/usr/local/mail/bounced"
+		}
+	}
+}
+```
 
-
-## Ortus Sponsors
-
-BoxLang is a professional open-source project and it is completely funded by the [community](https://patreon.com/ortussolutions) and [Ortus Solutions, Corp](https://www.ortussolutions.com).  Ortus Patreons get many benefits like a cfcasts account, a FORGEBOX Pro account and so much more.  If you are interested in becoming a sponsor, please visit our patronage page: [https://patreon.com/ortussolutions](https://patreon.com/ortussolutions)
-
-### THE DAILY BREAD
-
- > "I am the way, and the truth, and the life; no one comes to the Father, but by me (JESUS)" Jn 14:1-12

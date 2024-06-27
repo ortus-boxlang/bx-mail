@@ -84,7 +84,7 @@ class {
 			spoolInterval : .50,
 			connectionTimeout : nullValue(),
 			downloadUndeliveredAttachments: false,
-			signMesssage: nullValue(),
+			signMesssage: false,
 			signKeystore: nullValue(),
 			signKeystorePassword: nullValue(),
 			signKeyAlias: nullValue(),

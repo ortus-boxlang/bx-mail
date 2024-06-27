@@ -21,6 +21,7 @@ import ortus.boxlang.runtime.scopes.Key;
 import ortus.boxlang.runtime.types.Array;
 import ortus.boxlang.runtime.types.IStruct;
 import ortus.boxlang.runtime.types.Struct;
+import ortus.boxlang.runtime.util.FileSystemUtil;
 
 public class SpoolScheduler extends BaseScheduler {
 
@@ -103,8 +104,22 @@ public class SpoolScheduler extends BaseScheduler {
 		    .forEach( opt -> {
 			    ICacheEntry entry = ( ICacheEntry ) opt.get();
 			    try {
-				    Email message = ( Email ) entry.value().get();
+				    Email message;
+				    Boolean deleteAttachments = false;
+				    String mimeAttach		= null;
+				    if ( entry.value().get() instanceof Email ) {
+					    message = ( Email ) entry.value().get();
+				    } else {
+					    IStruct entryParams = StructCaster.cast( entry.value().get() );
+					    message = ( Email ) entryParams.get( Key.message );
+					    IStruct entryAttributes = entryParams.getAsStruct( Key.attributes );
+					    deleteAttachments = entryAttributes.getAsBoolean( MailKeys.remove );
+					    mimeAttach		= entryAttributes.getAsString( MailKeys.mimeAttach );
+				    }
 				    message.send();
+				    if ( deleteAttachments && mimeAttach != null && FileSystemUtil.exists( mimeAttach ) ) {
+					    FileSystemUtil.deleteFile( mimeAttach );
+				    }
 				    result.put( MailKeys.processed, result.getAsInteger( MailKeys.processed ) + 1 );
 				    if ( logEnabled ) {
 					    logger.atInfo().log( String.format(

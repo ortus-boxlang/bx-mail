@@ -17,44 +17,26 @@
  */
 package ortus.boxlang.modules.mail.components;
 
-import java.io.IOException;
-import java.net.IDN;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.Set;
-import java.util.UUID;
-
-import javax.mail.MessagingException;
-import javax.mail.Part;
-import javax.mail.internet.MimeBodyPart;
-import javax.mail.internet.MimeMultipart;
 
 import org.apache.commons.mail.Email;
-import org.apache.commons.mail.EmailAttachment;
 import org.apache.commons.mail.EmailException;
 import org.apache.commons.mail.MultiPartEmail;
 import org.apache.commons.mail.SimpleEmail;
 import org.apache.commons.mail.util.IDNEmailAddressConverter;
 import org.apache.commons.text.WordUtils;
 
-import ortus.boxlang.modules.mail.util.MailEncryptionUtil;
 import ortus.boxlang.modules.mail.util.MailKeys;
+import ortus.boxlang.modules.mail.util.MailUtil;
 import ortus.boxlang.runtime.components.Attribute;
 import ortus.boxlang.runtime.components.BoxComponent;
 import ortus.boxlang.runtime.components.Component;
 import ortus.boxlang.runtime.context.IBoxContext;
-import ortus.boxlang.runtime.context.RequestBoxContext;
-import ortus.boxlang.runtime.dynamic.ExpressionInterpreter;
-import ortus.boxlang.runtime.dynamic.casters.StringCaster;
-import ortus.boxlang.runtime.dynamic.casters.StructCaster;
 import ortus.boxlang.runtime.scopes.Key;
 import ortus.boxlang.runtime.types.Array;
 import ortus.boxlang.runtime.types.IStruct;
 import ortus.boxlang.runtime.types.Struct;
-import ortus.boxlang.runtime.types.exceptions.BoxIOException;
 import ortus.boxlang.runtime.types.exceptions.BoxRuntimeException;
-import ortus.boxlang.runtime.types.util.ListUtil;
-import ortus.boxlang.runtime.util.FileSystemUtil;
 import ortus.boxlang.runtime.validation.Validator;
 
 @BoxComponent( allowsBody = true, requiresBody = true )
@@ -67,6 +49,7 @@ public class Mail extends Component {
 	    MailKeys.text, "text/plain",
 	    MailKeys.plain, "text/plain"
 	);
+
 	/*
 	 * Converter which ensures all unicode email address input is correctly encoded
 	 */
@@ -91,7 +74,6 @@ public class Mail extends Component {
 		    new Attribute( MailKeys.remove, "boolean", false ), // "yes|no"
 		    new Attribute( MailKeys.replyTo, "string" ), // "e-mail address"
 		    new Attribute( Key.server, "string" ), // "SMTP server address"
-		    // Disabling spoolEnable by default for now until can fix the Scheduler not being picked up
 		    new Attribute( MailKeys.spoolEnable, "boolean", false ), // "yes|no"
 		    new Attribute( Key.timeout, "string" ), // "number of seconds"
 		    new Attribute( Key.type, "string" ), // "mime type"
@@ -99,14 +81,14 @@ public class Mail extends Component {
 		    new Attribute( MailKeys.useSSL, "string" ), // "yes|no"
 		    new Attribute( MailKeys.useTLS, "string" ), // "yes|no"
 		    new Attribute( MailKeys.wrapText, "string" ), // "column number"
-		    new Attribute( MailKeys.sign, "boolean", false ), // "true|false"
+		    new Attribute( MailKeys.sign, "boolean" ), // "true|false" - we keep this without a default so that the global config can override
 		    new Attribute( MailKeys.keystore, "string" ), // "location of keystore"
 		    new Attribute( MailKeys.keystorePassword, "string" ), // "password of keystore"
 		    new Attribute( MailKeys.keyAlias, "string" ), // "alias of key"
 		    new Attribute( MailKeys.keyPassword, "string" ), // "password for private key"
 		    new Attribute( MailKeys.encrypt, "boolean", false ), // "true|false"
 		    new Attribute( MailKeys.recipientCert, "string" ), // <path to the public key cert>
-		    new Attribute( MailKeys.encryptionAlgorithm, "string" ), // "DES_EDE3_CBC, RC2_CBC, AES128_CBC, AES192_CBC, AES256_CBC"
+		    new Attribute( MailKeys.encryptionAlgorithm, "string", "AES256_CBC" ), // "DES_EDE3_CBC, RC2_CBC, AES128_CBC, AES192_CBC, AES256_CBC"
 		    new Attribute( MailKeys.IDNAVersion, "integer" ), // DNA encoding"
 		    // Query-specific attributes
 		    new Attribute( Key.query, "any", Set.of( Validator.NOT_IMPLEMENTED ) ), // "query name"
@@ -122,68 +104,79 @@ public class Mail extends Component {
 	}
 
 	/**
-	 * An example component that says hello
+	 * This component wraps an encompassing mail message and sends it to the specified recipients
 	 *
 	 * @param context        The context in which the Component is being invoked
 	 * @param attributes     The attributes to the Component
 	 * @param body           The body of the Component
 	 * @param executionState The execution state of the Component
 	 *
-	 * @attribute.from "e-mail address"
+	 * @attribute.from Sender email address
 	 *
-	 * @attribute.to "comma-delimited list"
+	 * @attribute.to Comma-delimited list of recipient email addresses
 	 *
-	 * @attribute.charset "character encoding"
+	 * @attribute.charset The character encoding of the email
 	 *
-	 * @attribute.debug "yes|no"
+	 * @attribute.subject The email subject
 	 *
-	 * @attribute.mailerid "header id"
+	 * @attribute.server Optional SMTP server address
 	 *
-	 * @attribute.mimeAttach "path of file to attach"
+	 * @attribute.port Optional SMTP server port
 	 *
-	 * @attribute.subject "string"
+	 * @attribute.username Optional SMTP username
 	 *
-	 * @attribute.type "mime type"
+	 * @attribute.password Optional SMTP password
 	 *
-	 * @attribute.wrapText "column number"
+	 * @attribute.useSSL Optional true|false for SMTP Connection
 	 *
-	 * @attribute.sign "true|false"
+	 * @attribute.useTLS true|false for SMTP TLS Connection
 	 *
-	 * @attribute.encrypt "true|false"
+	 * @attribute.mailerid The header ID of the mailer
 	 *
-	 * @attribute.query "query name"
+	 * @attribute.mimeAttach path of file to attach
 	 *
-	 * @attribute.group "query column"
+	 * @attribute.type MIME type of the email
 	 *
-	 * @attribute.groupCaseSensitive "yes|no"
+	 * @attribute.wrapText Wrap text after a certain number of characters has been reached
 	 *
-	 * @attribute.startRow "query row number"
+	 * @attribute.sign true|false Whether to sign the mail message - requires keystore, keystorePassword, keyAlias, keyPassword
 	 *
-	 * @attribute.maxRows "integer"
+	 * @attribute.keystore The location of the keystore (Used when signing)
+	 *
+	 * @attribute.keystorePassword The password of the keystore (Used when signing)
+	 *
+	 * @attribute.keyAlias The alias of the private key to use for signing (Used when signing)
+	 *
+	 * @attributes.keyPassword The password for the private key within the keystore (Used when signing)
+	 *
+	 * @attribute.encrypt true|false Whether to encrypt the mail message - requires recipientCert, encryptionAlgorithm
+	 *
+	 * @attribute.recipientCert The path to the public key certificate of the recipient (Used when encrypting)
+	 *
+	 * @attribute.encryptionAlgorithm The encryption algorithm to use (Used when encrypting). One of DES_EDE3_CBC, RC2_CBC, AES128_CBC, AES192_CBC,
+	 *                                AES256_CBC
+	 *
+	 * @attribute.debug true|false Whether to enable debug logging output
 	 *
 	 * @return An empty body result is returned
 	 *
 	 */
 	public BodyResult _invoke( IBoxContext context, IStruct attributes, ComponentBody body, IStruct executionState ) {
 
-		IStruct	moduleSettings		= runtime.getModuleService().getModuleSettings( MailKeys._MODULE_NAME );
-		String	from				= attributes.getAsString( Key.from );
-		String	charset				= attributes.getAsString( Key.charset );
-		Boolean	debug				= attributes.getAsBoolean( MailKeys.debug );
-		String	mailerid			= attributes.getAsString( MailKeys.mailerid );
-		String	mimeAttach			= attributes.getAsString( MailKeys.mimeAttach );
-		String	subject				= attributes.getAsString( MailKeys.subject );
-		String	messageType			= attributes.getAsString( Key.type );
-		Integer	wrapText			= attributes.getAsInteger( MailKeys.wrapText );
+		IStruct	moduleSettings	= runtime.getModuleService().getModuleSettings( MailKeys._MODULE_NAME );
+		String	from			= attributes.getAsString( Key.from );
+		String	charset			= attributes.getAsString( Key.charset );
+		Boolean	debug			= attributes.getAsBoolean( MailKeys.debug );
+		String	mailerid		= attributes.getAsString( MailKeys.mailerid );
+		String	mimeAttach		= attributes.getAsString( MailKeys.mimeAttach );
+		String	subject			= attributes.getAsString( MailKeys.subject );
+		String	messageType		= attributes.getAsString( Key.type );
+		Integer	wrapText		= attributes.getAsInteger( MailKeys.wrapText );
 		// Encryption attributes
-		Boolean	sign				= attributes.getAsBoolean( MailKeys.sign );
-		Boolean	encrypt				= attributes.getAsBoolean( MailKeys.encrypt );
-		// Query-specific attributes
-		Object	query				= attributes.get( Key.query );
-		String	group				= attributes.getAsString( Key.group );
-		Boolean	groupCaseSensitive	= attributes.getAsBoolean( MailKeys.groupCaseSensitive );
-		Integer	startRow			= attributes.getAsInteger( Key.startRow );
-		Integer	maxRows				= attributes.getAsInteger( Key.maxRows );
+		// Check for any signature settings in the configuration
+		MailUtil.applySignatureSettings( attributes );
+		Boolean	sign	= attributes.getAsBoolean( MailKeys.sign );
+		Boolean	encrypt	= attributes.getAsBoolean( MailKeys.encrypt );
 
 		executionState.put( MailKeys.mailParams, new Array() );
 		executionState.put( MailKeys.mailParts, new Array() );
@@ -222,7 +215,7 @@ public class Mail extends Component {
 		if ( message instanceof SimpleEmail ) {
 			message.setContent( wrapText != null ? WordUtils.wrap( buffer.toString(), wrapText ) : buffer.toString(), messageType );
 		} else {
-			appendMimeContent( ( MultiPartEmail ) message, buffer, attributes, context, mailParams, mailParts );
+			MailUtil.appendMimeContent( ( MultiPartEmail ) message, buffer, attributes, context, mailParams, mailParts );
 		}
 
 		try {
@@ -235,362 +228,13 @@ public class Mail extends Component {
 			message.addHeader( "X-Mailer", mailerid );
 		}
 
-		setMessageServer( context, attributes, message );
+		MailUtil.setMessageServer( context, attributes, message );
 
-		setMessageRecipients( attributes, message );
+		MailUtil.setMessageRecipients( attributes, message );
 
-		spoolOrSend( message, attributes, context );
+		MailUtil.spoolOrSend( message, attributes, context );
 
 		return DEFAULT_RETURN;
-	}
-
-	/**
-	 * Sets the message recipients
-	 *
-	 * @param attributes
-	 * @param message
-	 */
-	void setMessageRecipients( IStruct attributes, Email message ) {
-
-		String	to		= attributes.getAsString( Key.to );
-		String	bcc		= attributes.getAsString( MailKeys.bcc );
-		String	cc		= attributes.getAsString( MailKeys.cc );
-		String	replyTo	= attributes.getAsString( MailKeys.replyTo );
-		String	failTo	= attributes.getAsString( MailKeys.failTo );
-
-		message.setBounceAddress( failTo != null ? IDNConverter.toASCII( failTo ) : IDNConverter.toASCII( attributes.getAsString( Key.from ) ) );
-
-		ListUtil.asList( to, ", ", false, false )
-		    .stream()
-		    .forEach( address -> {
-			    try {
-				    message.addTo( IDNConverter.toASCII( StringCaster.cast( address ) ) );
-			    } catch ( EmailException e ) {
-				    throw new BoxRuntimeException(
-				        "An error occurred while attempting parse a sendable 'to' address.  The message recieved was: " + e.getMessage() );
-			    }
-		    } );
-		if ( cc != null ) {
-			ListUtil.asList( to, ", ", false, false )
-			    .stream()
-			    .forEach( address -> {
-				    try {
-					    message.addCc( IDNConverter.toASCII( StringCaster.cast( address ) ) );
-				    } catch ( EmailException e ) {
-					    throw new BoxRuntimeException(
-					        "An error occurred while attempting parse a sendable 'cc' address.  The message recieved was: " + e.getMessage() );
-				    }
-			    } );
-		}
-		if ( bcc != null ) {
-			ListUtil.asList( to, ", ", false, false )
-			    .stream()
-			    .forEach( address -> {
-				    try {
-					    message.addBcc( IDNConverter.toASCII( StringCaster.cast( address ) ) );
-				    } catch ( EmailException e ) {
-					    throw new BoxRuntimeException(
-					        "An error occurred while attempting parse a sendable 'bcc' address.  The message recieved was: " + e.getMessage() );
-				    }
-			    } );
-		}
-
-		if ( replyTo != null ) {
-			ListUtil.asList( to, ", ", false, false )
-			    .stream()
-			    .forEach( address -> {
-				    try {
-					    message.addReplyTo( IDNConverter.toASCII( StringCaster.cast( address ) ) );
-				    } catch ( EmailException e ) {
-					    throw new BoxRuntimeException(
-					        "An error occurred while attempting parse a sendable 'replyTo' address.  The message recieved was: " + e.getMessage() );
-				    }
-			    } );
-		}
-
-	}
-
-	/**
-	 * Sets the message server parameters
-	 *
-	 * @param context
-	 * @param attributes
-	 * @param message
-	 */
-	void setMessageServer( IBoxContext context, IStruct attributes, Email message ) {
-
-		IStruct	primaryServer	= StructCaster.cast( getMailServers( context, attributes ).get( 0 ) );
-		String	username		= primaryServer.getAsString( Key.username );
-		Boolean	useSSL			= attributes.getAsBoolean( MailKeys.useSSL );
-		Boolean	useTLS			= attributes.getAsBoolean( MailKeys.useTLS );
-
-		message.setPopBeforeSmtp( false );
-		message.setHostName( primaryServer.getAsString( Key.server ) );
-		message.setSmtpPort( primaryServer.getAsInteger( Key.port ) );
-
-		if ( username != null && username.length() > 0 ) {
-			String password = primaryServer.getAsString( Key.password );
-			if ( password == null ) {
-				throw new BoxRuntimeException( "A password must be provided when specifying a username for SMTP authentication" );
-			}
-			message.setAuthentication( username, password );
-		}
-
-		if ( useTLS == null && primaryServer.getAsBoolean( MailKeys.TLS ) != null ) {
-			useTLS = primaryServer.getAsBoolean( MailKeys.TLS );
-		}
-
-		if ( useSSL == null && primaryServer.getAsBoolean( MailKeys.SSL ) != null ) {
-			useSSL = primaryServer.getAsBoolean( MailKeys.SSL );
-		}
-
-		if ( useTLS != null ) {
-			message.setStartTLSRequired( useTLS );
-		}
-
-		if ( useSSL != null ) {
-			message.setSSLOnConnect( useSSL );
-		}
-
-	}
-
-	/**
-	 * Appends mime content parts to the message
-	 *
-	 * @param message
-	 * @param buffer
-	 * @param attributes
-	 * @param context
-	 * @param mailParams
-	 * @param mailParts
-	 */
-	private void appendMimeContent(
-	    MultiPartEmail message,
-	    StringBuffer buffer,
-	    IStruct attributes,
-	    IBoxContext context,
-	    Array mailParams,
-	    Array mailParts ) {
-		String	mimeAttach	= attributes.getAsString( MailKeys.mimeAttach );
-		Boolean	remove		= attributes.getAsBoolean( MailKeys.remove );
-		if ( mimeAttach != null ) {
-			Path filePath = Path.of( mimeAttach );
-			try {
-				mailParams.add(
-				    Struct.of(
-				        MailKeys.disposition, null,
-				        Key.file, mimeAttach,
-				        MailKeys.fileName, filePath.getFileName().toString(),
-				        Key.type, Files.probeContentType( filePath )
-				    )
-				);
-			} catch ( IOException e ) {
-				throw new BoxIOException( e );
-			}
-		}
-		boolean hasContentParts = mailParts.size() > 0
-		    &&
-		    mailParts.stream().map( StructCaster::cast )
-		        .anyMatch(
-		            item -> item.getAsString( Key.type ).toLowerCase().contains( "text" ) || item.getAsString( Key.type ).toLowerCase().contains( "html" ) );
-		if ( !hasContentParts ) {
-			if ( mailParams.size() == 0 ) {
-				message.setContent( buffer.toString() );
-				message.setContentType( "text/plain" );
-			} else {
-				message.setContentType( "multipart/mixed" );
-				appendMessagePart( message, buffer.toString(), StringCaster.cast( attributes.getOrDefault( Key.type, "text/plain" ) ),
-				    attributes.getAsString( Key.charset ), attributes );
-			}
-		} else {
-			mailParts.stream().map( StructCaster::cast )
-			    .forEach( part -> {
-				    String mimeType = part.getAsString( Key.type ).toLowerCase();
-				    if ( mimeType.contains( "html" ) ) {
-					    mimeType = "text/html";
-				    } else if ( mimeType.contains( "text" ) ) {
-					    mimeType = "text/plain";
-				    }
-				    appendMessagePart( message, part.get( Key.result ), mimeType, attributes.getAsString( Key.charset ), attributes );
-			    } );
-
-		}
-		// File attachment
-		mailParams.stream().map( StructCaster::cast )
-		    .filter( param -> param.get( Key.file ) != null )
-		    .forEach( param -> {
-			    Path filePath = Path.of( param.getAsString( Key.file ) );
-			    try {
-				    if ( !attributes.getAsBoolean( MailKeys.sign ) && !attributes.getAsBoolean( MailKeys.encrypt ) ) {
-					    EmailAttachment attachment = new EmailAttachment();
-					    attachment.setPath( filePath.toAbsolutePath().toString() );
-					    attachment.setDisposition( param.get( MailKeys.disposition ) != null ? param.getAsString( MailKeys.disposition ) : Part.ATTACHMENT );
-					    if ( param.containsKey( MailKeys.fileName ) ) {
-						    attachment.setName( param.getAsString( MailKeys.fileName ) );
-					    }
-					    if ( param.get( Key.description ) != null ) {
-						    attachment.setDescription( param.getAsString( Key.description ) );
-					    }
-					    message.attach( attachment );
-				    } else {
-					    attributes.keySet().stream()
-					        .forEach( key -> param.putIfAbsent( key, attributes.get( key ) ) );
-					    appendMessagePart(
-					        message,
-					        FileSystemUtil.read( param.getAsString( Key.file ) ), Files.probeContentType( filePath ),
-					        attributes.getAsString( Key.charset ),
-					        param
-					    );
-				    }
-
-			    } catch ( EmailException e ) {
-				    throw new BoxRuntimeException(
-				        "An exception occured while attempting to attach the file " + filePath.toAbsolutePath().toString() + ". " + e.getMessage(), e );
-			    } catch ( IOException e ) {
-				    throw new BoxIOException( e );
-			    }
-
-		    } );
-
-	}
-
-	/**
-	 * Appends an individual message part
-	 *
-	 * @param message
-	 * @param content
-	 * @param mimeType
-	 * @param charset
-	 */
-	private void appendMessagePart( MultiPartEmail message, Object content, String mimeType, String charset, IStruct attributes ) {
-		Boolean	encrypt	= attributes.getAsBoolean( MailKeys.encrypt );
-		Boolean	sign	= attributes.getAsBoolean( MailKeys.sign );
-		try {
-			MimeMultipart	mimePart	= new MimeMultipart();
-			MimeBodyPart	bodyPart	= new MimeBodyPart();
-			if ( content instanceof String ) {
-				bodyPart.setContent( StringCaster.cast( content ), mimeType + ";charset=" + charset );
-			} else {
-				bodyPart.setDisposition( attributes.get( MailKeys.disposition ) == null ? Part.INLINE : attributes.getAsString( MailKeys.disposition ) );
-				if ( attributes.containsKey( MailKeys.fileName ) ) {
-					bodyPart.setFileName( attributes.getAsString( MailKeys.fileName ) );
-				} else if ( attributes.containsKey( Key.file ) ) {
-					bodyPart.setFileName( Path.of( attributes.getAsString( Key.file ) ).getFileName().toString() );
-				}
-				bodyPart.setContent( content, mimeType );
-			}
-
-			if ( sign ) {
-				bodyPart = ( MimeBodyPart ) MailEncryptionUtil.signMessagePart( attributes, bodyPart ).getBodyPart( 0 );
-			}
-
-			if ( encrypt ) {
-				bodyPart = MailEncryptionUtil.encryptMessagePart( attributes, bodyPart );
-			}
-
-			mimePart.addBodyPart( bodyPart );
-			message.addPart( mimePart );
-
-		} catch ( MessagingException e ) {
-			throw new BoxRuntimeException( "An error occurred while attempting to attach content of type " + mimeType + " to the email", e );
-		} catch ( EmailException e ) {
-			throw new BoxRuntimeException( "An error occurred while attempting to attach content of type " + mimeType + " to the email", e );
-		}
-	}
-
-	/**
-	 * Parses the mail server attributes and settings
-	 *
-	 * @param context
-	 * @param attributes
-	 *
-	 * @return
-	 */
-	private Array getMailServers( IBoxContext context, IStruct attributes ) {
-		String	server			= attributes.getAsString( Key.server );
-		String	username		= attributes.getAsString( Key.username );
-		String	password		= attributes.getAsString( Key.password );
-		Integer	port			= attributes.getAsInteger( Key.port );
-		String	timeout			= attributes.getAsString( Key.timeout );
-		IStruct	moduleSettings	= runtime.getModuleService().getModuleSettings( MailKeys._MODULE_NAME );
-
-		Array	mailServers		= null;
-		if ( attributes.containsKey( MailKeys.SMTP ) ) {
-			server = attributes.getAsString( MailKeys.SMTP );
-		}
-		if ( server == null ) {
-			// check context setings first
-			IStruct requestSettings = context.getParentOfType( RequestBoxContext.class ).getSettings();
-			if ( requestSettings.containsKey( MailKeys.mailServers ) ) {
-				mailServers = requestSettings.getAsArray( MailKeys.mailServers );
-			} else if ( moduleSettings.getAsArray( MailKeys.mailServers ).size() > 0 ) {
-				mailServers = moduleSettings.getAsArray( MailKeys.mailServers );
-			} else {
-				throw new BoxRuntimeException( "No mail servers have been defined in any of the available configurations. The message cannot be sent." );
-			}
-		} else {
-			String IDNAVersion = attributes.getAsString( MailKeys.IDNAVersion );
-			mailServers = Array.of(
-			    Struct.of(
-			        Key.server, IDNAVersion != null ? IDN.toASCII( server, IDN.USE_STD3_ASCII_RULES ) : IDN.toASCII( server ),
-			        Key.port, port == null ? 25 : port,
-			        Key.username, username,
-			        Key.password, password,
-			        Key.timeout, timeout == null ? moduleSettings.get( Key.connectionTimeout ) : timeout
-			    )
-			);
-		}
-
-		return mailServers;
-	}
-
-	/**
-	 * Spools or sends the email message
-	 *
-	 * @param message
-	 * @param attributes
-	 * @param context
-	 */
-	void spoolOrSend( Email message, IStruct attributes, IBoxContext context ) {
-		IStruct	moduleSettings	= runtime.getModuleService().getModuleSettings( MailKeys._MODULE_NAME );
-		Boolean	spoolEnable		= attributes.getAsBoolean( MailKeys.spoolEnable );
-		String	priority		= attributes.getAsString( Key.priority );
-		String	messageId		= null;
-		if ( spoolEnable == null ) {
-			spoolEnable = moduleSettings.getAsBoolean( MailKeys.spoolEnable );
-		}
-
-		if ( attributes.get( MailKeys.messageVariable ) != null ) {
-			ExpressionInterpreter.setVariable(
-			    context,
-			    attributes.getAsString( MailKeys.messageVariable ),
-			    message
-			);
-		}
-
-		if ( spoolEnable ) {
-			messageId = UUID.randomUUID().toString();
-			runtime.getCacheService().getCache( spoolCache ).set(
-			    messageId,
-			    message
-			);
-		} else {
-			try {
-				messageId = message.send();
-
-				if ( attributes.get( MailKeys.messageIdentifier ) != null ) {
-					ExpressionInterpreter.setVariable(
-					    context,
-					    attributes.getAsString( MailKeys.messageIdentifier ),
-					    messageId
-					);
-				}
-
-			} catch ( Throwable e ) {
-				throw new BoxRuntimeException( "Message failed to send.", e );
-			}
-		}
-
 	}
 
 }
