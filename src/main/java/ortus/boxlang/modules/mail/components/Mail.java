@@ -19,13 +19,6 @@ package ortus.boxlang.modules.mail.components;
 
 import java.util.Set;
 
-import org.apache.commons.mail.Email;
-import org.apache.commons.mail.EmailException;
-import org.apache.commons.mail.MultiPartEmail;
-import org.apache.commons.mail.SimpleEmail;
-import org.apache.commons.mail.util.IDNEmailAddressConverter;
-import org.apache.commons.text.WordUtils;
-
 import ortus.boxlang.modules.mail.util.MailKeys;
 import ortus.boxlang.modules.mail.util.MailUtil;
 import ortus.boxlang.runtime.components.Attribute;
@@ -35,25 +28,10 @@ import ortus.boxlang.runtime.context.IBoxContext;
 import ortus.boxlang.runtime.scopes.Key;
 import ortus.boxlang.runtime.types.Array;
 import ortus.boxlang.runtime.types.IStruct;
-import ortus.boxlang.runtime.types.Struct;
-import ortus.boxlang.runtime.types.exceptions.BoxRuntimeException;
 import ortus.boxlang.runtime.validation.Validator;
 
 @BoxComponent( allowsBody = true, requiresBody = true )
 public class Mail extends Component {
-
-	static final Key						spoolCache		= MailKeys.mailUnsent;
-
-	static final IStruct					mimeMap			= Struct.of(
-	    MailKeys.HTML, "text/html",
-	    MailKeys.text, "text/plain",
-	    MailKeys.plain, "text/plain"
-	);
-
-	/*
-	 * Converter which ensures all unicode email address input is correctly encoded
-	 */
-	static final IDNEmailAddressConverter	IDNConverter	= new IDNEmailAddressConverter();
 
 	public Mail() {
 		super();
@@ -163,76 +141,19 @@ public class Mail extends Component {
 	 */
 	public BodyResult _invoke( IBoxContext context, IStruct attributes, ComponentBody body, IStruct executionState ) {
 
-		IStruct	moduleSettings	= runtime.getModuleService().getModuleSettings( MailKeys._MODULE_NAME );
-		String	from			= attributes.getAsString( Key.from );
-		String	charset			= attributes.getAsString( Key.charset );
-		Boolean	debug			= attributes.getAsBoolean( MailKeys.debug );
-		String	mailerid		= attributes.getAsString( MailKeys.mailerid );
-		String	mimeAttach		= attributes.getAsString( MailKeys.mimeAttach );
-		String	subject			= attributes.getAsString( MailKeys.subject );
-		String	messageType		= attributes.getAsString( Key.type );
-		Integer	wrapText		= attributes.getAsInteger( MailKeys.wrapText );
-		// Encryption attributes
-		// Check for any signature settings in the configuration
-		MailUtil.applySignatureSettings( attributes );
-		Boolean	sign	= attributes.getAsBoolean( MailKeys.sign );
-		Boolean	encrypt	= attributes.getAsBoolean( MailKeys.encrypt );
-
 		executionState.put( MailKeys.mailParams, new Array() );
 		executionState.put( MailKeys.mailParts, new Array() );
 
 		StringBuffer	buffer		= new StringBuffer();
 
 		BodyResult		bodyResult	= processBody( context, body, buffer );
+
 		// IF there was a return statement inside our body, we early exit now
 		if ( bodyResult.isEarlyExit() ) {
 			return bodyResult;
 		}
 
-		Array	mailParams	= executionState.getAsArray( MailKeys.mailParams );
-		Array	mailParts	= executionState.getAsArray( MailKeys.mailParts );
-
-		Email	message		= ( sign || encrypt || mimeAttach != null || mailParts.size() > 0 || mailParams.size() > 0 )
-		    ? new MultiPartEmail()
-		    : new SimpleEmail();
-
-		message.setDebug( debug );
-
-		message.setSubject( subject );
-
-		if ( messageType != null ) {
-			message.setContentType( messageType.toLowerCase() );
-		}
-
-		message.setCharset( charset == null ? moduleSettings.getAsString( MailKeys.defaultEncoding ) : charset );
-
-		if ( messageType == null ) {
-			messageType = "text/html";
-		} else if ( mimeMap.containsKey( Key.of( messageType ) ) ) {
-			messageType = mimeMap.getAsString( Key.of( messageType ) );
-		}
-
-		if ( message instanceof SimpleEmail ) {
-			message.setContent( wrapText != null ? WordUtils.wrap( buffer.toString(), wrapText ) : buffer.toString(), messageType );
-		} else {
-			MailUtil.appendMimeContent( ( MultiPartEmail ) message, buffer, attributes, context, mailParams, mailParts );
-		}
-
-		try {
-			message.setFrom( IDNConverter.toASCII( from ) );
-		} catch ( EmailException e ) {
-			throw new BoxRuntimeException( "An error occurred while attempting parse a sendable 'from' address.  The message recieved was: " + e.getMessage() );
-		}
-
-		if ( mailerid != null ) {
-			message.addHeader( "X-Mailer", mailerid );
-		}
-
-		MailUtil.setMessageServer( context, attributes, message );
-
-		MailUtil.setMessageRecipients( attributes, message );
-
-		MailUtil.spoolOrSend( message, attributes, context );
+		MailUtil.processMail( buffer, context, attributes, executionState );
 
 		return DEFAULT_RETURN;
 	}

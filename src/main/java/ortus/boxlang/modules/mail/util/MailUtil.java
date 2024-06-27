@@ -15,7 +15,9 @@ import org.apache.commons.mail.Email;
 import org.apache.commons.mail.EmailAttachment;
 import org.apache.commons.mail.EmailException;
 import org.apache.commons.mail.MultiPartEmail;
+import org.apache.commons.mail.SimpleEmail;
 import org.apache.commons.mail.util.IDNEmailAddressConverter;
+import org.apache.commons.text.WordUtils;
 
 import ortus.boxlang.runtime.BoxRuntime;
 import ortus.boxlang.runtime.context.IBoxContext;
@@ -38,10 +40,87 @@ public class MailUtil {
 
 	static final Key						spoolCache		= MailKeys.mailUnsent;
 
+	static final IStruct					mimeMap			= Struct.of(
+	    MailKeys.HTML, "text/html",
+	    MailKeys.text, "text/plain",
+	    MailKeys.plain, "text/plain"
+	);
+
 	/*
 	 * Converter which ensures all unicode email address input is correctly encoded
 	 */
 	static final IDNEmailAddressConverter	IDNConverter	= new IDNEmailAddressConverter();
+
+	/**
+	 * Processes a mail message from the context and attributes
+	 *
+	 * @param buffer
+	 * @param context
+	 * @param attributes
+	 * @param body
+	 * @param executionState
+	 */
+	public static void processMail( StringBuffer buffer, IBoxContext context, IStruct attributes, IStruct executionState ) {
+		IStruct	moduleSettings	= runtime.getModuleService().getModuleSettings( MailKeys._MODULE_NAME );
+		String	from			= attributes.getAsString( Key.from );
+		String	charset			= attributes.getAsString( Key.charset );
+		Boolean	debug			= attributes.getAsBoolean( MailKeys.debug );
+		String	mailerid		= attributes.getAsString( MailKeys.mailerid );
+		String	mimeAttach		= attributes.getAsString( MailKeys.mimeAttach );
+		String	subject			= attributes.getAsString( MailKeys.subject );
+		String	messageType		= attributes.getAsString( Key.type );
+		Integer	wrapText		= attributes.getAsInteger( MailKeys.wrapText );
+		// Encryption attributes
+		// Check for any signature settings in the configuration
+		MailUtil.applySignatureSettings( attributes );
+		Boolean	sign		= attributes.getAsBoolean( MailKeys.sign );
+		Boolean	encrypt		= attributes.getAsBoolean( MailKeys.encrypt );
+
+		Array	mailParams	= executionState.getAsArray( MailKeys.mailParams );
+		Array	mailParts	= executionState.getAsArray( MailKeys.mailParts );
+
+		Email	message		= ( sign || encrypt || mimeAttach != null || mailParts.size() > 0 || mailParams.size() > 0 )
+		    ? new MultiPartEmail()
+		    : new SimpleEmail();
+
+		message.setDebug( debug );
+
+		message.setSubject( subject );
+
+		if ( messageType != null ) {
+			message.setContentType( messageType.toLowerCase() );
+		}
+
+		message.setCharset( charset == null ? moduleSettings.getAsString( MailKeys.defaultEncoding ) : charset );
+
+		if ( messageType == null ) {
+			messageType = "text/html";
+		} else if ( mimeMap.containsKey( Key.of( messageType ) ) ) {
+			messageType = mimeMap.getAsString( Key.of( messageType ) );
+		}
+
+		if ( message instanceof SimpleEmail ) {
+			message.setContent( wrapText != null ? WordUtils.wrap( buffer.toString(), wrapText ) : buffer.toString(), messageType );
+		} else {
+			MailUtil.appendMimeContent( ( MultiPartEmail ) message, buffer, attributes, context, mailParams, mailParts );
+		}
+
+		try {
+			message.setFrom( IDNConverter.toASCII( from ) );
+		} catch ( EmailException e ) {
+			throw new BoxRuntimeException( "An error occurred while attempting parse a sendable 'from' address.  The message recieved was: " + e.getMessage() );
+		}
+
+		if ( mailerid != null ) {
+			message.addHeader( "X-Mailer", mailerid );
+		}
+
+		MailUtil.setMessageServer( context, attributes, message );
+
+		MailUtil.setMessageRecipients( attributes, message );
+
+		MailUtil.spoolOrSend( message, attributes, context );
+	}
 
 	/**
 	 * Sets the message recipients
