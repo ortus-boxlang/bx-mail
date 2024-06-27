@@ -9,10 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added 
+
+* Added encryption and signature support
+
 ## [1.0.0] - 2024-06-13
 
 - First iteration of this module
-
-[Unreleased]: https://github.com/ortus-boxlang/bx-mail/compare/v1.0.0...HEAD
-
-[1.0.0]: https://github.com/ortus-boxlang/bx-mail/compare/8c58183f7d6cec04cd54a503b8d87307d25f2574...v1.0.0
