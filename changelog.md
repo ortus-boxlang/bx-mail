@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2024-07-11
+
 ## [1.0.0] - 2024-06-27
 
 ### Added
@@ -21,4 +23,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 [Unreleased]: https://github.com/ortus-boxlang/bx-mail/compare/v1.0.0...HEAD
 
-[1.0.0]: https://github.com/ortus-boxlang/bx-mail/compare/de650ed4ac0ddcc7409d11413a5d4e1da069f9ae...v1.0.0
+[1.0.0]: https://github.com/ortus-boxlang/bx-mail/compare/v1.0.0...v1.0.0
+
