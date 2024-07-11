@@ -1,15 +1,15 @@
 {
 	"name": "BoxLang Mail Module",
 	"version": "@build.version@+@build.number@",
-	"location": "https://downloads.ortussolutions.com/ortussolutions/boxlang-modules/bx-mail/@build.version@/bx-mail-@build.version@.zip",
+	"location": "https://downloads.ortussolutions.com/ortussolutions/ortus-boxlang/bx-mail/@build.version@/bx-mail-@build.version@.zip",
 	"author": "Ortus Solutions",
-	"homepage": "https://github.com/boxlang-modules/bx-mail",
-	"documentation": "https://github.com/boxlang-modules/bx-mail",
+	"homepage": "https://github.com/ortus-boxlang/bx-mail",
+	"documentation": "https://github.com/ortus-boxlang/bx-mail",
 	"repository": {
 		"type": "git",
-		"URL": "https://github.com/boxlang-modules/bx-mail"
+		"URL": "https://github.com/ortus-boxlang/bx-mail"
 	},
-	"bugs": "https://github.com/boxlang-modules/bx-mail/issues",
+	"bugs": "https://github.com/ortus-boxlang/bx-mail/issues",
 	"slug": "bx-mail",
 	"shortDescription": "Boxlang module which adds mail funcitionality, components, and methods.",
 	"type": "boxlang-modules",
