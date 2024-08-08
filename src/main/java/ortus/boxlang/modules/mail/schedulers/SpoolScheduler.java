@@ -15,6 +15,9 @@ import ortus.boxlang.runtime.async.tasks.BaseScheduler;
 import ortus.boxlang.runtime.async.tasks.ScheduledTask;
 import ortus.boxlang.runtime.cache.ICacheEntry;
 import ortus.boxlang.runtime.cache.providers.ICacheProvider;
+import ortus.boxlang.runtime.dynamic.casters.BooleanCaster;
+import ortus.boxlang.runtime.dynamic.casters.DoubleCaster;
+import ortus.boxlang.runtime.dynamic.casters.IntegerCaster;
 import ortus.boxlang.runtime.dynamic.casters.LongCaster;
 import ortus.boxlang.runtime.dynamic.casters.StructCaster;
 import ortus.boxlang.runtime.scopes.Key;
@@ -33,7 +36,7 @@ public class SpoolScheduler extends BaseScheduler {
 	private static final BoxRuntime	runtime					= BoxRuntime.getInstance();
 	private static final IStruct	moduleSettings			= runtime.getModuleService().getModuleSettings( MailKeys._MODULE_NAME );
 
-	private static final Boolean	logEnabled				= moduleSettings.getAsBoolean( MailKeys.logEnabled );
+	private static final Boolean	logEnabled				= BooleanCaster.cast( moduleSettings.get( MailKeys.logEnabled ) );
 	private static final Logger		logger					= LoggerFactory.getLogger( Mail.class );
 
 	public SpoolScheduler() {
@@ -53,7 +56,7 @@ public class SpoolScheduler extends BaseScheduler {
 			    Struct.of(
 			        Key.objectStore, MailKeys.fileSystemStore.getName(),
 			        Key.directory, moduleSettings.getAsString( MailKeys.spoolDirectory ),
-			        Key.defaultTimeout, moduleSettings.getAsInteger( MailKeys.spoolTimeout ),
+			        Key.defaultTimeout, IntegerCaster.cast( moduleSettings.get( MailKeys.spoolTimeout ) ),
 			        Key.useLastAccessTimeouts, false,
 			        Key.evictCount, 0
 			    )
@@ -67,14 +70,14 @@ public class SpoolScheduler extends BaseScheduler {
 			    Struct.of(
 			        Key.objectStore, MailKeys.fileSystemStore.getName(),
 			        Key.directory, moduleSettings.getAsString( MailKeys.bounceDirectory ),
-			        Key.defaultTimeout, moduleSettings.getAsInteger( MailKeys.bounceTimeout ),
+			        Key.defaultTimeout, IntegerCaster.cast( moduleSettings.get( MailKeys.bounceTimeout ) ),
 			        Key.useLastAccessTimeouts, false,
 			        Key.evictCount, 0
 			    )
 			);
 		}
 
-		long spoolIntervalMillis = LongCaster.cast( moduleSettings.getAsDouble( MailKeys.spoolInterval ) * minuteToMilisMulitplier );
+		long spoolIntervalMillis = LongCaster.cast( DoubleCaster.cast( moduleSettings.get( MailKeys.spoolInterval ) ) * minuteToMilisMulitplier );
 
 		task( "SpoolTask" )
 		    .call( SpoolScheduler::processSpool )
@@ -113,7 +116,7 @@ public class SpoolScheduler extends BaseScheduler {
 					    IStruct entryParams = StructCaster.cast( entry.value().get() );
 					    message = ( Email ) entryParams.get( Key.message );
 					    IStruct entryAttributes = entryParams.getAsStruct( Key.attributes );
-					    deleteAttachments = entryAttributes.getAsBoolean( MailKeys.remove );
+					    deleteAttachments = BooleanCaster.cast( entryAttributes.get( MailKeys.remove ) );
 					    mimeAttach		= entryAttributes.getAsString( MailKeys.mimeAttach );
 				    }
 				    message.send();

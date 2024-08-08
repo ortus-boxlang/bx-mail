@@ -130,22 +130,21 @@ class {
 	 * Called by the ModuleService on module activation
 	 */
 	function onLoad(){
-		// test for any legacy CFConfig formatted settings
+		// test for CFConfig formatted settings
 		if( settings.mailServers.isEmpty() ){
-			// var baseConfig = variables.boxRuntime
-// 									.getConfiguration()
-// 									.runtime
-// 									.getBaseConfig();
+			var baseConfig = variables.boxRuntime
+									.getConfiguration()
+									.asStruct();
 
-// 			baseConfig.keyArray()
-// 						.filter( key -> lcase( left( key, 4 ) ) == "mail" )
-// 						.each( key => {
-// 							if( key == "mailServers" ){
-// 								this.settings.mailServers = baseConfig.mailServers;
-// 							} else {
-// 								this.settings[ right( key, len( key ) - 4 ) ] = baseConfig[ key ];
-// 							}
-// 						 } );
+			baseConfig.keyArray()
+						.filter( key -> lcase( left( key, 4 ) ) == "mail" )
+						.each( key => {
+							if( key == "mailServers" ){
+								variables.settings.mailServers = baseConfig.mailServers;
+							} else {
+								variables.settings[ right( key, len( key ) - 4 ) ] = baseConfig[ key ];
+							}
+						 } );
 		}
 
 	}
