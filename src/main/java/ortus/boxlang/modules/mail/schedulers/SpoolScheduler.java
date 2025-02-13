@@ -1,3 +1,20 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package ortus.boxlang.modules.mail.schedulers;
 
 import java.util.Optional;
@@ -5,10 +22,7 @@ import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.mail.Email;
 import org.apache.commons.mail.EmailException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
-import ortus.boxlang.modules.mail.components.Mail;
 import ortus.boxlang.modules.mail.util.MailKeys;
 import ortus.boxlang.runtime.BoxRuntime;
 import ortus.boxlang.runtime.async.tasks.BaseScheduler;
@@ -20,6 +34,7 @@ import ortus.boxlang.runtime.dynamic.casters.DoubleCaster;
 import ortus.boxlang.runtime.dynamic.casters.IntegerCaster;
 import ortus.boxlang.runtime.dynamic.casters.LongCaster;
 import ortus.boxlang.runtime.dynamic.casters.StructCaster;
+import ortus.boxlang.runtime.logging.BoxLangLogger;
 import ortus.boxlang.runtime.scopes.Key;
 import ortus.boxlang.runtime.types.Array;
 import ortus.boxlang.runtime.types.IStruct;
@@ -28,17 +43,20 @@ import ortus.boxlang.runtime.util.FileSystemUtil;
 
 public class SpoolScheduler extends BaseScheduler {
 
-	static final Key				spoolCache				= MailKeys.mailUnsent;
-	static final Key				bounceCache				= MailKeys.mailBounced;
+	static final Key					spoolCache				= MailKeys.mailUnsent;
+	static final Key					bounceCache				= MailKeys.mailBounced;
 
-	static final double				minuteToMilisMulitplier	= 60000d;
+	static final double					minuteToMilisMulitplier	= 60000d;
 
-	private static final BoxRuntime	runtime					= BoxRuntime.getInstance();
-	private static final IStruct	moduleSettings			= runtime.getModuleService().getModuleSettings( MailKeys._MODULE_NAME );
+	private static final BoxRuntime		runtime					= BoxRuntime.getInstance();
+	private static final IStruct		moduleSettings			= runtime.getModuleService().getModuleSettings( MailKeys._MODULE_NAME );
 
-	private static final Boolean	logEnabled				= BooleanCaster.cast( moduleSettings.get( MailKeys.logEnabled ) );
-	private static final Logger		logger					= LoggerFactory.getLogger( Mail.class );
+	private static final Boolean		logEnabled				= BooleanCaster.cast( moduleSettings.get( MailKeys.logEnabled ) );
+	private static final BoxLangLogger	logger					= runtime.getLoggingService().getLogger( "mail" );
 
+	/**
+	 * Default constructor
+	 */
 	public SpoolScheduler() {
 		super( "SpoolScheduler" );
 	}
@@ -48,7 +66,6 @@ public class SpoolScheduler extends BaseScheduler {
 	 */
 	@Override
 	public void configure() {
-
 		if ( !runtime.getCacheService().hasCache( spoolCache ) ) {
 			runtime.getCacheService().createCache(
 			    spoolCache,
