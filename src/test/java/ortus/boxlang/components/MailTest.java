@@ -185,23 +185,26 @@ public class MailTest {
 	@DisplayName( "It can test a basic sending of mail with script" )
 	@Test
 	public void testMailComponentScript() {
+		// @formatter:off
 		instance.executeSource(
 		    """
-		             mail
-		     			from="jclausen@ortussolutions.com"
-		     			to="jclausen@ortussolutions.com"
-		     			subject="Mail Test"
-		     			server="127.0.0.1"
-		     			port="25"
-		     			spoolEnable="false"
-		     			debug="true"
-		     messageIdentifier="messageId"
-		     messageVariable="messageVar"
-		     		{
-		     writeOutput( "Hello mail!" );
-		    }
-		                      """,
+				bx:mail
+				from="jclausen@ortussolutions.com"
+				to="jclausen@ortussolutions.com"
+				subject="Mail Test"
+				server="127.0.0.1"
+				port="25"
+				spoolEnable="false"
+				debug="true"
+				messageIdentifier="messageId"
+				messageVariable="messageVar"
+				{
+					writeOutput( "Hello mail!" );
+				}
+			""",
 		    context, BoxSourceType.BOXSCRIPT );
+		// @formatter:on
+
 		assertTrue( variables.get( messageId ) instanceof String );
 		assertTrue( variables.get( messageVar ) instanceof Email );
 		Email message = ( Email ) variables.get( messageVar );
