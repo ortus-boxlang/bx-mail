@@ -200,7 +200,8 @@ public class SpoolScheduler extends BaseScheduler {
 	 *
 	 * @task The task that got executed
 	 *
-	 * @exception The ColdFusion exception object
+	 * @param task      the scheduled task
+	 * @param exception The ColdFusion exception object
 	 */
 	@Override
 	public void onAnyTaskError( ScheduledTask task, Exception exception ) {
