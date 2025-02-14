@@ -7,10 +7,9 @@
 |:------------------------------------------------------:|
 ```
 
-This module provides mail sending functionality to Boxlang
+This module provides mail sending functionality to Boxlang with many features such as attachments, signing, and encryption.
 
-
-## Components 
+## Components
 
 This module contributes the following Components to the language:
 
@@ -59,7 +58,7 @@ This module contributes the following Components to the language:
 ### Simple Email Example ( Script syntax )
 
 ```javascript
-mail
+bx:mail
     from="jclausen@ortussolutions.com"
     to="jclausen@ortussolutions.com"
     subject="Hello from BoxLang Mail!"
@@ -90,15 +89,15 @@ Here's a PDF for you!
 	subject="Mail In Parts"
 >
 
-<bx:mailpart type="text">
-Hello mail!
-</bx:mailpart>
+	<bx:mailpart type="text">
+	Hello mail!
+	</bx:mailpart>
 
-<bx:mailpart type="html">
-<h1>Hello mail!</h1>
-</bx:mailpart>
+	<bx:mailpart type="html">
+	<h1>Hello mail!</h1>
+	</bx:mailpart>
 
-<bx:mailparam file="/path/to/my/file.pdf" fileName="PDFForYou.pdf" type="application/x-pdf" />
+	<bx:mailparam file="/path/to/my/file.pdf" fileName="PDFForYou.pdf" type="application/x-pdf" />
 
 </bx:mail>
 ```
@@ -166,4 +165,3 @@ Mail server connectivity may be provided either via runtime configuration ( e.g.
 	}
 }
 ```
-
