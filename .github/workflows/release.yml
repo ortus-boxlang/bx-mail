@@ -130,7 +130,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: boxlang-build
+          name: bx-mail-build-${{env.version}}-${{env.BUILD_ID}}
           path: |
             build/reports/tests/**
             changelog.md
@@ -213,7 +213,7 @@ jobs:
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
-          name: boxlang-build
+          name: bx-mail-build-${{env.version}}-${{env.BUILD_ID}}
           path: .tmp
 
       - name: Copy Changelog
