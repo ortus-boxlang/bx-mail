@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2025-02-18
+
 ### Added
 
 - Added encryption and signature support
@@ -17,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - First iteration of this module
 
-[Unreleased]: https://github.com/ortus-boxlang/bx-mail/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/ortus-boxlang/bx-mail/compare/v1.1.0...HEAD
 
-[1.0.0]: https://github.com/ortus-boxlang/bx-mail/compare/de650ed4ac0ddcc7409d11413a5d4e1da069f9ae...v1.0.0
+[1.1.0]: https://github.com/ortus-boxlang/bx-mail/compare/v1.0.0...v1.1.0
+
+[1.0.0]: https://github.com/ortus-boxlang/bx-mail/compare/v1.0.0...v1.0.0
