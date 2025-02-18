@@ -74,7 +74,6 @@ public class MailUtil {
 	 * @param buffer
 	 * @param context
 	 * @param attributes
-	 * @param body
 	 * @param executionState
 	 */
 	public static void processMail( StringBuffer buffer, IBoxContext context, IStruct attributes, IStruct executionState ) {
