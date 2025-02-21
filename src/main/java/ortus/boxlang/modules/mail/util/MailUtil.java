@@ -23,6 +23,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.UUID;
 
+import javax.activation.CommandMap;
+import javax.activation.MailcapCommandMap;
 import javax.mail.MessagingException;
 import javax.mail.Part;
 import javax.mail.internet.MimeBodyPart;
@@ -56,20 +58,32 @@ import ortus.boxlang.runtime.util.FileSystemUtil;
 
 public class MailUtil {
 
-	public static final BoxRuntime			runtime			= BoxRuntime.getInstance();
+	public static final BoxRuntime	runtime		= BoxRuntime.getInstance();
 
-	static final Key						spoolCache		= MailKeys.mailUnsent;
+	static final Key				spoolCache	= MailKeys.mailUnsent;
 
-	static final IStruct					mimeMap			= Struct.of(
+	static final IStruct			mimeMap		= Struct.of(
 	    MailKeys.HTML, "text/html",
 	    MailKeys.text, "text/plain",
 	    MailKeys.plain, "text/plain"
 	);
 
 	/**
+	 * This private constructor assures that the current class path will be able to find the correct mappings
+	 */
+	private MailUtil() {
+		MailcapCommandMap mc = ( MailcapCommandMap ) CommandMap.getDefaultCommandMap();
+		mc.addMailcap( "text/html;; x-java-content-handler=com.sun.mail.handlers.text_html" );
+		mc.addMailcap( "text/xml;; x-java-content-handler=com.sun.mail.handlers.text_xml" );
+		mc.addMailcap( "text/plain;; x-java-content-handler=com.sun.mail.handlers.text_plain" );
+		mc.addMailcap( "multipart/*;; x-java-content-handler=com.sun.mail.handlers.multipart_mixed" );
+		mc.addMailcap( "message/rfc822;; x-java-content- handler=com.sun.mail.handlers.message_rfc822" );
+	}
+
+	/**
 	 * Converter which ensures all unicode email address input is correctly encoded
 	 */
-	static final IDNEmailAddressConverter	IDNConverter	= new IDNEmailAddressConverter();
+	static final IDNEmailAddressConverter IDNConverter = new IDNEmailAddressConverter();
 
 	/**
 	 * Processes a mail message from the context and attributes
