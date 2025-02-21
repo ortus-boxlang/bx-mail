@@ -459,7 +459,7 @@ public class MailUtil {
 			// Explicit module settings
 			Array				moduleMailServers	= moduleSettings.getAsArray( MailKeys.mailServers );
 			// CFConfig mail servers
-			Array				configMailServers	= requestContext.getConfig().getAsArray( MailKeys.mailServers );
+			Array				configMailServers	= requestContext.getConfig().getAsStruct( Key.originalConfig ).getAsArray( MailKeys.mailServers );
 			// Runtime settings servers
 			Array				settingsMailServers	= requestSettings.getAsArray( MailKeys.mailServers );
 			if ( moduleMailServers != null && moduleMailServers.size() > 0 ) {
