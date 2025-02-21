@@ -49,6 +49,7 @@ public class MailKeys {
 	public static final Key	keyPassword				= Key.of( "keyPassword" );
 	public static final Key	keystore				= Key.of( "keystore" );
 	public static final Key	keystorePassword		= Key.of( "keystorePassword" );
+	public static final Key	lifeTimeout				= Key.of( "lifeTimeout" );
 	public static final Key	logEnabled				= Key.of( "logEnabled" );
 	public static final Key	Mail					= Key.of( "Mail" );
 	public static final Key	mailerid				= Key.of( "mailerid" );

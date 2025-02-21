@@ -214,6 +214,35 @@ public class MailTest {
 		assertEquals( "jclausen@ortussolutions.com", message.getFromAddress().toString() );
 	}
 
+	@DisplayName( "It can test a basic sending of mail using the default config settings" )
+	@Test
+	public void testDefaultSettings() {
+		// @formatter:off
+		instance.executeSource(
+		    """
+		    <bx:mail
+				from="jclausen@ortussolutions.com"
+				to="jclausen@ortussolutions.com"
+				subject="Mail Test"
+				spoolEnable="false"
+				debug="true"
+				messageIdentifier="messageId"
+				messageVariable="messageVar"
+			>
+		    Hello mail!
+		    </bx:mail>
+		                     """,
+		    context, BoxSourceType.BOXTEMPLATE );
+		// @formatter:on
+		assertTrue( variables.get( messageId ) instanceof String );
+		assertTrue( variables.get( messageVar ) instanceof Email );
+		Email message = ( Email ) variables.get( messageVar );
+		assertEquals( "Hello mail!", StringCaster.cast( message.getContent() ).trim() );
+		assertEquals( "Mail Test", StringCaster.cast( message.getSubject() ).trim() );
+		assertEquals( "jclausen@ortussolutions.com", message.getToAddresses().get( 0 ).toString() );
+		assertEquals( "jclausen@ortussolutions.com", message.getFromAddress().toString() );
+	}
+
 	@DisplayName( "It can test a basic sending of mail with component parts" )
 	@Test
 	public void testMailComponentParts() throws MessagingException, IOException {
