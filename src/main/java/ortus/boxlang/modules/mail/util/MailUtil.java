@@ -40,6 +40,7 @@ import ortus.boxlang.runtime.BoxRuntime;
 import ortus.boxlang.runtime.context.IBoxContext;
 import ortus.boxlang.runtime.context.RequestBoxContext;
 import ortus.boxlang.runtime.dynamic.ExpressionInterpreter;
+import ortus.boxlang.runtime.dynamic.casters.IntegerCaster;
 import ortus.boxlang.runtime.dynamic.casters.StringCaster;
 import ortus.boxlang.runtime.dynamic.casters.StructCaster;
 import ortus.boxlang.runtime.scopes.Key;
@@ -48,6 +49,7 @@ import ortus.boxlang.runtime.types.IStruct;
 import ortus.boxlang.runtime.types.Struct;
 import ortus.boxlang.runtime.types.exceptions.BoxIOException;
 import ortus.boxlang.runtime.types.exceptions.BoxRuntimeException;
+import ortus.boxlang.runtime.types.util.BLCollector;
 import ortus.boxlang.runtime.types.util.ListUtil;
 import ortus.boxlang.runtime.util.FileSystemUtil;
 
@@ -400,7 +402,7 @@ public class MailUtil {
 
 		message.setPopBeforeSmtp( false );
 		message.setHostName( primaryServer.getAsString( Key.server ) );
-		message.setSmtpPort( primaryServer.getAsInteger( Key.port ) );
+		message.setSmtpPort( IntegerCaster.cast( primaryServer.get( Key.port ) ) );
 
 		if ( username != null && username.length() > 0 ) {
 			String password = primaryServer.getAsString( Key.password );
@@ -448,25 +450,69 @@ public class MailUtil {
 		if ( attributes.containsKey( MailKeys.SMTP ) ) {
 			server = attributes.getAsString( MailKeys.SMTP );
 		}
+		String IDNAVersion = attributes.getAsString( MailKeys.IDNAVersion );
 		if ( server == null ) {
+			Array				servers				= null;
+			RequestBoxContext	requestContext		= context.getParentOfType( RequestBoxContext.class );
 			// check context setings first
-			IStruct requestSettings = context.getParentOfType( RequestBoxContext.class ).getSettings();
-			if ( requestSettings.containsKey( MailKeys.mailServers ) ) {
-				mailServers = requestSettings.getAsArray( MailKeys.mailServers );
-			} else if ( moduleSettings.getAsArray( MailKeys.mailServers ).size() > 0 ) {
-				mailServers = moduleSettings.getAsArray( MailKeys.mailServers );
+			IStruct				requestSettings		= requestContext.getSettings();
+			// Explicit module settings
+			Array				moduleMailServers	= moduleSettings.getAsArray( MailKeys.mailServers );
+			// CFConfig mail servers
+			Array				configMailServers	= requestContext.getConfig().getAsArray( MailKeys.mailServers );
+			// Runtime settings servers
+			Array				settingsMailServers	= requestSettings.getAsArray( MailKeys.mailServers );
+			if ( moduleMailServers != null && moduleMailServers.size() > 0 ) {
+				servers = moduleMailServers;
+			} else if ( configMailServers != null && configMailServers.size() > 0 ) {
+				servers = configMailServers;
+			} else if ( settingsMailServers != null && settingsMailServers.size() > 0 ) {
+				servers = settingsMailServers;
 			} else {
 				throw new BoxRuntimeException( "No mail servers have been defined in any of the available configurations. The message cannot be sent." );
 			}
+			mailServers = servers.stream().map( StructCaster::cast )
+			    .map( serverStruct -> {
+				    String smtpSetting	= serverStruct.getAsString( MailKeys.SMTP );
+				    String hostSetting	= serverStruct.getAsString( Key.host );
+				    String timeoutSetting = serverStruct.getAsString( MailKeys.lifeTimeout );
+				    if ( timeoutSetting != null ) {
+					    timeoutSetting = serverStruct.getAsString( Key.timeout );
+				    }
+
+				    String serverName	= smtpSetting != null
+				        ? smtpSetting
+				        : ( hostSetting != null
+				            ? hostSetting
+				            : serverStruct.getAsString( Key.server ) );
+				    String serverPort	= serverStruct.getAsString( Key.port );
+				    String serverUsername = serverStruct.getAsString( Key.username );
+				    String serverPassword = serverStruct.getAsString( Key.password );
+
+				    return Struct.of(
+				        Key.server, IDNAVersion != null ? IDN.toASCII( serverName, IDN.USE_STD3_ASCII_RULES ) : IDN.toASCII( serverName ),
+				        Key.port, serverPort != null ? IntegerCaster.cast( serverPort ) : 25,
+				        Key.username, serverUsername,
+				        Key.password, serverPassword,
+				        Key.timeout, timeout != null ? timeout
+				            : ( timeoutSetting != null
+				                ? timeoutSetting
+				                : moduleSettings.get( Key.connectionTimeout ) ),
+				        MailKeys.SSL, serverStruct.getAsBoolean( MailKeys.SSL ),
+				        MailKeys.TLS, serverStruct.getAsBoolean( MailKeys.TLS )
+				    );
+			    } )
+			    .collect( BLCollector.toArray() );
 		} else {
-			String IDNAVersion = attributes.getAsString( MailKeys.IDNAVersion );
 			mailServers = Array.of(
 			    Struct.of(
 			        Key.server, IDNAVersion != null ? IDN.toASCII( server, IDN.USE_STD3_ASCII_RULES ) : IDN.toASCII( server ),
 			        Key.port, port == null ? 25 : port,
 			        Key.username, username,
 			        Key.password, password,
-			        Key.timeout, timeout == null ? moduleSettings.get( Key.connectionTimeout ) : timeout
+			        Key.timeout, timeout == null ? moduleSettings.get( Key.connectionTimeout ) : timeout,
+			        MailKeys.SSL, attributes.getAsBoolean( MailKeys.SSL ),
+			        MailKeys.TLS, attributes.getAsBoolean( MailKeys.TLS )
 			    )
 			);
 		}
