@@ -40,6 +40,7 @@ import ortus.boxlang.runtime.BoxRuntime;
 import ortus.boxlang.runtime.context.IBoxContext;
 import ortus.boxlang.runtime.context.RequestBoxContext;
 import ortus.boxlang.runtime.dynamic.ExpressionInterpreter;
+import ortus.boxlang.runtime.dynamic.casters.BooleanCaster;
 import ortus.boxlang.runtime.dynamic.casters.IntegerCaster;
 import ortus.boxlang.runtime.dynamic.casters.StringCaster;
 import ortus.boxlang.runtime.dynamic.casters.StructCaster;
@@ -498,8 +499,8 @@ public class MailUtil {
 				            : ( timeoutSetting != null
 				                ? timeoutSetting
 				                : moduleSettings.get( Key.connectionTimeout ) ),
-				        MailKeys.SSL, serverStruct.getAsBoolean( MailKeys.SSL ),
-				        MailKeys.TLS, serverStruct.getAsBoolean( MailKeys.TLS )
+				        MailKeys.SSL, BooleanCaster.cast( serverStruct.get( MailKeys.SSL ) ),
+				        MailKeys.TLS, BooleanCaster.cast( serverStruct.get( MailKeys.TLS ) )
 				    );
 			    } )
 			    .collect( BLCollector.toArray() );
