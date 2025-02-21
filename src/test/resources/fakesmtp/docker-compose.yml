@@ -1,0 +1,8 @@
+services:
+  smptserver:
+    image: munkyboy/fakesmtp
+    volumes:
+      - ./mail:/var/mail
+    ports:
+      - "25:25"
+    restart: always

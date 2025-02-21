@@ -20,8 +20,8 @@ package ortus.boxlang.modules.mail.schedulers;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
-import org.apache.commons.mail.Email;
-import org.apache.commons.mail.EmailException;
+import org.apache.commons.mail2.core.EmailException;
+import org.apache.commons.mail2.jakarta.Email;
 
 import ortus.boxlang.modules.mail.util.MailKeys;
 import ortus.boxlang.runtime.BoxRuntime;

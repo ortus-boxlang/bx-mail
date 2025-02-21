@@ -23,21 +23,18 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.UUID;
 
-import javax.activation.CommandMap;
-import javax.activation.MailcapCommandMap;
-import javax.mail.MessagingException;
-import javax.mail.Part;
-import javax.mail.internet.MimeBodyPart;
-import javax.mail.internet.MimeMultipart;
-
-import org.apache.commons.mail.Email;
-import org.apache.commons.mail.EmailAttachment;
-import org.apache.commons.mail.EmailException;
-import org.apache.commons.mail.MultiPartEmail;
-import org.apache.commons.mail.SimpleEmail;
-import org.apache.commons.mail.util.IDNEmailAddressConverter;
+import org.apache.commons.mail2.core.EmailException;
+import org.apache.commons.mail2.jakarta.Email;
+import org.apache.commons.mail2.jakarta.EmailAttachment;
+import org.apache.commons.mail2.jakarta.MultiPartEmail;
+import org.apache.commons.mail2.jakarta.SimpleEmail;
+import org.apache.commons.mail2.jakarta.util.IDNEmailAddressConverter;
 import org.apache.commons.text.WordUtils;
 
+import jakarta.mail.MessagingException;
+import jakarta.mail.Part;
+import jakarta.mail.internet.MimeBodyPart;
+import jakarta.mail.internet.MimeMultipart;
 import ortus.boxlang.runtime.BoxRuntime;
 import ortus.boxlang.runtime.context.IBoxContext;
 import ortus.boxlang.runtime.context.RequestBoxContext;
@@ -82,13 +79,6 @@ public class MailUtil {
 	 * @param executionState
 	 */
 	public static void processMail( StringBuffer buffer, IBoxContext context, IStruct attributes, IStruct executionState ) {
-		MailcapCommandMap commandMap = ( MailcapCommandMap ) CommandMap.getDefaultCommandMap();
-		commandMap.addMailcap( "text/html;; x-java-content-handler=com.sun.mail.handlers.text_html" );
-		commandMap.addMailcap( "text/xml;; x-java-content-handler=com.sun.mail.handlers.text_xml" );
-		commandMap.addMailcap( "text/plain;; x-java-content-handler=com.sun.mail.handlers.text_plain" );
-		commandMap.addMailcap( "multipart/*;; x-java-content-handler=com.sun.mail.handlers.multipart_mixed" );
-		commandMap.addMailcap( "message/rfc822;; x-java-content- handler=com.sun.mail.handlers.message_rfc822" );
-
 		IStruct	moduleSettings	= runtime.getModuleService().getModuleSettings( MailKeys._MODULE_NAME );
 		String	from			= attributes.getAsString( Key.from );
 		String	charset			= attributes.getAsString( Key.charset );
