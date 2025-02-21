@@ -1,8 +1,6 @@
 services:
   smptserver:
-    image: munkyboy/fakesmtp
-    volumes:
-      - ./mail:/var/mail
+    image: rnwood/smtp4dev
     ports:
       - "25:25"
     restart: always
