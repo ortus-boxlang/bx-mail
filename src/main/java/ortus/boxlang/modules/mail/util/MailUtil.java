@@ -31,6 +31,8 @@ import org.apache.commons.mail2.jakarta.SimpleEmail;
 import org.apache.commons.mail2.jakarta.util.IDNEmailAddressConverter;
 import org.apache.commons.text.WordUtils;
 
+import jakarta.activation.CommandMap;
+import jakarta.activation.MailcapCommandMap;
 import jakarta.mail.MessagingException;
 import jakarta.mail.Part;
 import jakarta.mail.internet.MimeBodyPart;
@@ -69,6 +71,18 @@ public class MailUtil {
 	 * Converter which ensures all unicode email address input is correctly encoded
 	 */
 	static final IDNEmailAddressConverter	IDNConverter	= new IDNEmailAddressConverter();
+
+	/**
+	 * This private constructor assures that the current class path will be able to find the correct mappings
+	 */
+	private MailUtil() {
+		MailcapCommandMap commandMap = ( MailcapCommandMap ) CommandMap.getDefaultCommandMap();
+		commandMap.addMailcap( "text/html;; x-java-content-handler=com.sun.mail.handlers.text_html" );
+		commandMap.addMailcap( "text/xml;; x-java-content-handler=com.sun.mail.handlers.text_xml" );
+		commandMap.addMailcap( "text/plain;; x-java-content-handler=com.sun.mail.handlers.text_plain" );
+		commandMap.addMailcap( "multipart/*;; x-java-content-handler=com.sun.mail.handlers.multipart_mixed" );
+		commandMap.addMailcap( "message/rfc822;; x-java-content- handler=com.sun.mail.handlers.message_rfc822" );
+	}
 
 	/**
 	 * Processes a mail message from the context and attributes
