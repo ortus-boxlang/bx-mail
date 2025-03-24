@@ -21,25 +21,29 @@ import java.io.IOException;
 import java.net.IDN;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.Security;
 import java.util.UUID;
 
-import javax.mail.MessagingException;
-import javax.mail.Part;
-import javax.mail.internet.MimeBodyPart;
-import javax.mail.internet.MimeMultipart;
-
-import org.apache.commons.mail.Email;
-import org.apache.commons.mail.EmailAttachment;
-import org.apache.commons.mail.EmailException;
-import org.apache.commons.mail.MultiPartEmail;
-import org.apache.commons.mail.SimpleEmail;
-import org.apache.commons.mail.util.IDNEmailAddressConverter;
+import org.apache.commons.mail2.core.EmailException;
+import org.apache.commons.mail2.jakarta.Email;
+import org.apache.commons.mail2.jakarta.EmailAttachment;
+import org.apache.commons.mail2.jakarta.MultiPartEmail;
+import org.apache.commons.mail2.jakarta.SimpleEmail;
+import org.apache.commons.mail2.jakarta.util.IDNEmailAddressConverter;
 import org.apache.commons.text.WordUtils;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
+import jakarta.activation.CommandMap;
+import jakarta.activation.MailcapCommandMap;
+import jakarta.mail.MessagingException;
+import jakarta.mail.Part;
+import jakarta.mail.internet.MimeBodyPart;
+import jakarta.mail.internet.MimeMultipart;
 import ortus.boxlang.runtime.BoxRuntime;
 import ortus.boxlang.runtime.context.IBoxContext;
 import ortus.boxlang.runtime.context.RequestBoxContext;
 import ortus.boxlang.runtime.dynamic.ExpressionInterpreter;
+import ortus.boxlang.runtime.dynamic.casters.BooleanCaster;
 import ortus.boxlang.runtime.dynamic.casters.IntegerCaster;
 import ortus.boxlang.runtime.dynamic.casters.StringCaster;
 import ortus.boxlang.runtime.dynamic.casters.StructCaster;
@@ -69,6 +73,45 @@ public class MailUtil {
 	 * Converter which ensures all unicode email address input is correctly encoded
 	 */
 	static final IDNEmailAddressConverter	IDNConverter	= new IDNEmailAddressConverter();
+
+	/**
+	 * Add our mail cap entries to the default command map
+	 */
+	static final MailcapCommandMap			mailcap			= ( MailcapCommandMap ) CommandMap.getDefaultCommandMap();
+	static {
+		mailcap
+		    .addMailcap( "application/pkcs7-signature;; x-java-content-handler=org.bouncycastle.mail.smime.handlers.pkcs7_signature" );
+		mailcap
+		    .addMailcap( "application/pkcs7-mime;; x-java-content-handler=org.bouncycastle.mail.smime.handlers.pkcs7_mime" );
+		mailcap
+		    .addMailcap( "application/x-pkcs7-signature;; x-java-content-handler=org.bouncycastle.mail.smime.handlers.x_pkcs7_signature" );
+		mailcap
+		    .addMailcap( "application/x-pkcs7-mime;; x-java-content-handler=org.bouncycastle.mail.smime.handlers.x_pkcs7_mime" );
+		mailcap
+		    .addMailcap( "multipart/signed;; x-java-content-handler=org.bouncycastle.mail.smime.handlers.multipart_signed" );
+		mailcap
+		    .addMailcap( "text/html;; x-java-content-handler=com.sun.mail.handlers.text_html" );
+		mailcap
+		    .addMailcap( "text/xml;; x-java-content-handler=com.sun.mail.handlers.text_xml" );
+		mailcap
+		    .addMailcap( "text/plain;; x-java-content-handler=com.sun.mail.handlers.text_plain" );
+		mailcap
+		    .addMailcap( "multipart/*;; x-java-content-handler=com.sun.mail.handlers.multipart_mixed" );
+		mailcap
+		    .addMailcap( "message/rfc822;; x-java-content- handler=com.sun.mail.handlers.message_rfc822" );
+
+		CommandMap.setDefaultCommandMap( mailcap );
+
+		if ( Security.getProvider( BouncyCastleProvider.PROVIDER_NAME ) == null ) {
+			Security.addProvider( new BouncyCastleProvider() );
+		}
+	}
+
+	/**
+	 * This private constructor assures that the current class path will be able to find the correct mappings
+	 */
+	private MailUtil() {
+	}
 
 	/**
 	 * Processes a mail message from the context and attributes
@@ -459,7 +502,7 @@ public class MailUtil {
 			// Explicit module settings
 			Array				moduleMailServers	= moduleSettings.getAsArray( MailKeys.mailServers );
 			// CFConfig mail servers
-			Array				configMailServers	= requestContext.getConfig().getAsArray( MailKeys.mailServers );
+			Array				configMailServers	= requestContext.getConfig().getAsStruct( Key.originalConfig ).getAsArray( MailKeys.mailServers );
 			// Runtime settings servers
 			Array				settingsMailServers	= requestSettings.getAsArray( MailKeys.mailServers );
 			if ( moduleMailServers != null && moduleMailServers.size() > 0 ) {
@@ -498,8 +541,8 @@ public class MailUtil {
 				            : ( timeoutSetting != null
 				                ? timeoutSetting
 				                : moduleSettings.get( Key.connectionTimeout ) ),
-				        MailKeys.SSL, serverStruct.getAsBoolean( MailKeys.SSL ),
-				        MailKeys.TLS, serverStruct.getAsBoolean( MailKeys.TLS )
+				        MailKeys.SSL, BooleanCaster.cast( serverStruct.get( MailKeys.SSL ) ),
+				        MailKeys.TLS, BooleanCaster.cast( serverStruct.get( MailKeys.TLS ) )
 				    );
 			    } )
 			    .collect( BLCollector.toArray() );

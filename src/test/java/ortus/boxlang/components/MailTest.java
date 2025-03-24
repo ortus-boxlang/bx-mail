@@ -28,11 +28,8 @@ import java.time.Instant;
 import java.util.Date;
 import java.util.stream.Collectors;
 
-import javax.mail.MessagingException;
-import javax.mail.internet.MimeMultipart;
-
-import org.apache.commons.mail.Email;
-import org.apache.commons.mail.MultiPartEmail;
+import org.apache.commons.mail2.jakarta.Email;
+import org.apache.commons.mail2.jakarta.MultiPartEmail;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo;
 import org.bouncycastle.cert.X509CertificateHolder;
@@ -50,6 +47,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import jakarta.mail.MessagingException;
+import jakarta.mail.internet.MimeMultipart;
 import ortus.boxlang.compiler.parser.BoxSourceType;
 import ortus.boxlang.runtime.BoxRuntime;
 import ortus.boxlang.runtime.context.IBoxContext;

@@ -13,7 +13,7 @@ env:
 
 jobs:
   tests:
-    name: Tests ${{ github.event.repository.name }}
+    name: "Tests: ${{ matrix.os }}, JDK: ${{ matrix.jdkVersion }}, Exp: ${{ matrix.experimental }}"
     runs-on: ${{ matrix.os }}
     env:
       DB_USER: root
@@ -22,7 +22,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ["ubuntu-latest", "windows-latest"]
+        # We need to use a windows 2019 image for our Fake SMTP server
+        os: ["ubuntu-latest", "windows-2019"]
         jdkVersion: ["21"]
         experimental: [false]
         #include:
@@ -42,6 +43,11 @@ jobs:
         with:
           distribution: "temurin"
           java-version: ${{ matrix.jdkVersion }}
+
+      # Startup Fake SMTP
+      - uses: hoverkraft-tech/compose-action@v2.0.2
+        with:
+          compose-file: "./src/test/resources/fakesmtp/docker-compose.yml"
 
       - name: Setup Gradle
         uses: gradle/gradle-build-action@v3
