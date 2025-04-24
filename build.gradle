@@ -36,7 +36,7 @@ repositories {
 dependencies {
 	// https://mvnrepository.com/artifact/org.apache.commons/commons-email2-jakarta
 	implementation 'org.apache.commons:commons-email2-jakarta:2.0.0-M1'
-	implementation 'org.apache.commons:commons-text:1.13.0'
+	implementation 'org.apache.commons:commons-text:1.13.1'
 
 	// Bouncy castle encrytpion library
 	implementation 'org.bouncycastle:bcjmail-jdk18on:1.80'
