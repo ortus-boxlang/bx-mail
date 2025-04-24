@@ -210,7 +210,7 @@ public class MailUtil {
 			    }
 		    } );
 		if ( cc != null ) {
-			ListUtil.asList( to, ", ", false, false )
+			ListUtil.asList( cc, ", ", false, false )
 			    .stream()
 			    .forEach( address -> {
 				    try {
@@ -222,7 +222,7 @@ public class MailUtil {
 			    } );
 		}
 		if ( bcc != null ) {
-			ListUtil.asList( to, ", ", false, false )
+			ListUtil.asList( bcc, ", ", false, false )
 			    .stream()
 			    .forEach( address -> {
 				    try {
@@ -235,7 +235,7 @@ public class MailUtil {
 		}
 
 		if ( replyTo != null ) {
-			ListUtil.asList( to, ", ", false, false )
+			ListUtil.asList( replyTo, ", ", false, false )
 			    .stream()
 			    .forEach( address -> {
 				    try {

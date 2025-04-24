@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+* BL-1278 -Fixes issues with correct assignment of cc, bcc, and replyTo fields
+
 ## [1.4.0] - 2025-03-24
 
 ## [1.3.0] - 2025-02-21
@@ -19,11 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Added encryption and signature support
+* Added encryption and signature support
 
 ## [1.0.0] - 2024-06-13
 
-- First iteration of this module
+* First iteration of this module
 
 [Unreleased]: https://github.com/ortus-boxlang/bx-mail/compare/v1.4.0...HEAD
 
