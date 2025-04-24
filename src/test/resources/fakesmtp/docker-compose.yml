@@ -3,4 +3,3 @@ services:
     image: rnwood/smtp4dev
     ports:
       - "25:25"
-    restart: always
