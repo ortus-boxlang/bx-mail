@@ -235,6 +235,8 @@ task downloadBoxLang( type: Download ) {
     onlyIfModified false
 }
 
+
+
 /**
  * Task to download the BoxLang Doc Generator
  * This is a temporary task until we publish it to maven
@@ -272,6 +274,7 @@ task generateTechnicalDocumentation( type: Javadoc ) {
 	options.doclet = "ortus.boxlang.tools.doclets.BoxLangDoclet"
     options.docletpath = classPaths
 }
+
 
 /**
  * Project Wide Helper function
