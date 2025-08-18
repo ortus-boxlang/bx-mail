@@ -5,8 +5,10 @@ plugins {
     id "com.github.harbby.gradle.serviceloader" version "1.1.9"
 	// For source code formatting
 	id "com.diffplug.spotless" version "7.0.4"
-	// Shadow
-	id "com.gradleup.shadow" version "9.0.0-rc1"
+	// For building shadow jars with jdk 17 ONLY
+    //id 'com.github.johnrengelman.shadow' version '8.1.1'
+    // For building shadow jars using JDK 21 +, they had to fork
+    id "io.github.goooler.shadow" version "8.1.8"
     // Download task
     id "de.undercouch.download" version "5.6.0"
 }
@@ -41,13 +43,11 @@ dependencies {
 	// Bouncy castle encrytpion library
 	implementation 'org.bouncycastle:bcjmail-jdk18on:1.81'
 
-	// Until BoxLang is published to Maven Central
-	compileOnly files( '../../boxlang/build/distributions/boxlang-' + boxlangVersion + '.jar' )
-    compileOnly files( 'src/test/resources/libs/boxlang-' + boxlangVersion + '.jar' )
+	// BoxLang Runtime
+	compileOnly "io.boxlang:boxlang:1.4.0"
 
     // Testing Dependencies
-	testImplementation files( '../../boxlang/build/distributions/boxlang-' + boxlangVersion + '.jar' )
-	testImplementation files( 'src/test/resources/libs/boxlang-' + boxlangVersion + '.jar' )
+	testImplementation "io.boxlang:boxlang:1.4.0"
     testImplementation "org.junit.jupiter:junit-jupiter:5.+"
 	testImplementation "org.mockito:mockito-core:5.+"
 	testImplementation "com.google.truth:truth:1.+"
