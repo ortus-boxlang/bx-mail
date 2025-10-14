@@ -44,10 +44,18 @@ dependencies {
 	implementation 'org.bouncycastle:bcjmail-jdk18on:1.81'
 
 	// BoxLang Runtime
-	compileOnly "io.boxlang:boxlang:1.4.0"
+	// Look for it in the local build directory
+	// You must run `./gradle build -x test` in the BoxLang project
+	if ( file( '../boxlang/build/libs/boxlang-' + boxlangVersion + '.jar' ).exists() ) {
+		compileOnly files( '../boxlang/build/libs/boxlang-' + boxlangVersion + '.jar' )
+		testImplementation files( '../boxlang/build/libs/boxlang-' + boxlangVersion + '.jar' )
+	} else {
+		// Downloaded Dependencies
+		compileOnly files( 'src/test/resources/libs/boxlang-' + boxlangVersion + '.jar' )
+		testImplementation files( 'src/test/resources/libs/boxlang-' + boxlangVersion + '.jar' )
+	}
 
     // Testing Dependencies
-	testImplementation "io.boxlang:boxlang:1.4.0"
     testImplementation "org.junit.jupiter:junit-jupiter:5.+"
 	testImplementation "org.mockito:mockito-core:5.+"
 	testImplementation "com.google.truth:truth:1.+"

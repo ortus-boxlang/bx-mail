@@ -56,9 +56,9 @@ public class Mail extends Component {
 		    new Attribute( Key.timeout, "string" ), // "number of seconds"
 		    new Attribute( Key.type, "string" ), // "mime type"
 		    new Attribute( Key.username, "string" ), // "SMTP user ID"
-		    new Attribute( MailKeys.useSSL, "string" ), // "yes|no"
-		    new Attribute( MailKeys.useTLS, "string" ), // "yes|no"
-		    new Attribute( MailKeys.wrapText, "string" ), // "column number"
+		    new Attribute( MailKeys.useSSL, "boolean" ), // "yes|no"
+		    new Attribute( MailKeys.useTLS, "boolean" ), // "yes|no"
+		    new Attribute( MailKeys.wrapText, "integer" ), // "column number"
 		    new Attribute( MailKeys.sign, "boolean" ), // "true|false" - we keep this without a default so that the global config can override
 		    new Attribute( MailKeys.keystore, "string" ), // "location of keystore"
 		    new Attribute( MailKeys.keystorePassword, "string" ), // "password of keystore"

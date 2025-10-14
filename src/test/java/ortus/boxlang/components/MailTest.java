@@ -443,21 +443,23 @@ public class MailTest {
 		variables.put( Key.of( "testCert" ), testCert );
 		instance.executeSource(
 		    """
-		       bx:mail
-		    from="jclausen@ortussolutions.com"
-		    to="jclausen@ortussolutions.com"
-		    subject="Mail Test"
-		    server="127.0.0.1"
-		    port="25"
-		    spoolEnable="false"
-		    debug="true"
-		    messageIdentifier="messageId"
-		    messageVariable="messageVar"
-		       encrypt=true
-		       recipientCert="#testCert#"{
-		       writeOutput( "Hello mail!" );
-		       }
-		                         """,
+		    bx:mail
+		    	from="jclausen@ortussolutions.com"
+		    	to="jclausen@ortussolutions.com"
+		    	subject="Mail Test"
+		    	server="127.0.0.1"
+		    	port="25"
+		    	useSSL="false"
+		    	useTLS="no"
+		    	spoolEnable="false"
+		    	debug="true"
+		    	messageIdentifier="messageId"
+		    	messageVariable="messageVar"
+		    	encrypt=true
+		    	recipientCert="#testCert#"{
+		    		writeOutput( "Hello mail!" );
+		    	}
+		                                  """,
 		    context, BoxSourceType.BOXSCRIPT );
 		assertTrue( variables.get( messageId ) instanceof String );
 		assertTrue( variables.get( messageVar ) instanceof Email );

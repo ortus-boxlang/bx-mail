@@ -440,8 +440,8 @@ public class MailUtil {
 
 		IStruct	primaryServer	= StructCaster.cast( getMailServers( context, attributes ).get( 0 ) );
 		String	username		= primaryServer.getAsString( Key.username );
-		Boolean	useSSL			= attributes.getAsBoolean( MailKeys.useSSL );
-		Boolean	useTLS			= attributes.getAsBoolean( MailKeys.useTLS );
+		Boolean	useSSL			= BooleanCaster.attempt( attributes.get( MailKeys.useSSL ) ).getOrDefault( null );
+		Boolean	useTLS			= BooleanCaster.attempt( attributes.get( MailKeys.useTLS ) ).getOrDefault( null );
 
 		message.setPopBeforeSmtp( false );
 		message.setHostName( primaryServer.getAsString( Key.server ) );
