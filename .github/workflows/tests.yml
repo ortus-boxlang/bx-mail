@@ -45,7 +45,7 @@ jobs:
           java-version: ${{ matrix.jdkVersion }}
 
       # Startup Fake SMTP
-      - uses: hoverkraft-tech/compose-action@v2.3.0
+      - uses: hoverkraft-tech/compose-action@v2.4.1
         with:
           compose-file: "./src/test/resources/fakesmtp/docker-compose.yml"
 
