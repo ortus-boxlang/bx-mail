@@ -217,7 +217,7 @@ public class SpoolScheduler extends BaseScheduler {
 	 */
 	@Override
 	public void onAnyTaskSuccess( ScheduledTask task, Optional<?> result ) {
-		logger.debug( "Mail Spool scheduled task " + task.getName() + " successfully completed." );
+		logger.trace( "Mail Spool scheduled task " + task.getName() + " successfully completed." );
 	}
 
 }

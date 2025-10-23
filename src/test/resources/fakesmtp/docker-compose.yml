@@ -1,5 +1,5 @@
 services:
-  smptserver:
+  smtpserver:
     image: rnwood/smtp4dev
     ports:
       - "25:25"

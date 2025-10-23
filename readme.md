@@ -59,8 +59,8 @@ This module contributes the following Components to the language:
 
 ```javascript
 bx:mail
-    from="jclausen@ortussolutions.com"
-    to="jclausen@ortussolutions.com"
+    from="boxlang@ortussolutions.com"
+    to="boxlang@ortussolutions.com"
     subject="Hello from BoxLang Mail!"
 {
     writeOutput( "Hello world!" );
@@ -71,8 +71,8 @@ bx:mail
 
 ```javascript
 <bx:mail
-    from="jclausen@ortussolutions.com"
-    to="jclausen@ortussolutions.com"
+    from="boxlang@ortussolutions.com"
+    to="boxlang@ortussolutions.com"
     subject="File For You"
     mimeAttach="/path/to/my/file.pdf"
 >
@@ -84,8 +84,8 @@ Here's a PDF for you!
 
 ```javascript
 <bx:mail
-	from="jclausen@ortussolutions.com"
-	to="jclausen@ortussolutions.com"
+	from="boxlang@ortussolutions.com"
+	to="boxlang@ortussolutions.com"
 	subject="Mail In Parts"
 >
 

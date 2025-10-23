@@ -148,10 +148,6 @@ public class MailUtil {
 
 		message.setSubject( subject );
 
-		if ( messageType != null ) {
-			message.setContentType( messageType.toLowerCase() );
-		}
-
 		message.setCharset( charset == null ? moduleSettings.getAsString( MailKeys.defaultEncoding ) : charset );
 
 		if ( messageType == null ) {
@@ -159,6 +155,8 @@ public class MailUtil {
 		} else if ( mimeMap.containsKey( Key.of( messageType ) ) ) {
 			messageType = mimeMap.getAsString( Key.of( messageType ) );
 		}
+
+		message.setContentType( messageType.toLowerCase() );
 
 		if ( message instanceof SimpleEmail ) {
 			message.setContent( wrapText != null ? WordUtils.wrap( buffer.toString(), wrapText ) : buffer.toString(), messageType );
@@ -440,8 +438,8 @@ public class MailUtil {
 
 		IStruct	primaryServer	= StructCaster.cast( getMailServers( context, attributes ).get( 0 ) );
 		String	username		= primaryServer.getAsString( Key.username );
-		Boolean	useSSL			= attributes.getAsBoolean( MailKeys.useSSL );
-		Boolean	useTLS			= attributes.getAsBoolean( MailKeys.useTLS );
+		Boolean	useSSL			= BooleanCaster.attempt( attributes.get( MailKeys.useSSL ) ).getOrDefault( null );
+		Boolean	useTLS			= BooleanCaster.attempt( attributes.get( MailKeys.useTLS ) ).getOrDefault( null );
 
 		message.setPopBeforeSmtp( false );
 		message.setHostName( primaryServer.getAsString( Key.server ) );

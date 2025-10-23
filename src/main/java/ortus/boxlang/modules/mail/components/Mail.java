@@ -28,6 +28,7 @@ import ortus.boxlang.runtime.context.IBoxContext;
 import ortus.boxlang.runtime.scopes.Key;
 import ortus.boxlang.runtime.types.Array;
 import ortus.boxlang.runtime.types.IStruct;
+import ortus.boxlang.runtime.types.Struct;
 import ortus.boxlang.runtime.validation.Validator;
 
 @BoxComponent( allowsBody = true, requiresBody = true )
@@ -56,9 +57,9 @@ public class Mail extends Component {
 		    new Attribute( Key.timeout, "string" ), // "number of seconds"
 		    new Attribute( Key.type, "string" ), // "mime type"
 		    new Attribute( Key.username, "string" ), // "SMTP user ID"
-		    new Attribute( MailKeys.useSSL, "string" ), // "yes|no"
-		    new Attribute( MailKeys.useTLS, "string" ), // "yes|no"
-		    new Attribute( MailKeys.wrapText, "string" ), // "column number"
+		    new Attribute( MailKeys.useSSL, "boolean" ), // "yes|no"
+		    new Attribute( MailKeys.useTLS, "boolean" ), // "yes|no"
+		    new Attribute( MailKeys.wrapText, "integer" ), // "column number"
 		    new Attribute( MailKeys.sign, "boolean" ), // "true|false" - we keep this without a default so that the global config can override
 		    new Attribute( MailKeys.keystore, "string" ), // "location of keystore"
 		    new Attribute( MailKeys.keystorePassword, "string" ), // "password of keystore"
@@ -144,9 +145,18 @@ public class Mail extends Component {
 		executionState.put( MailKeys.mailParams, new Array() );
 		executionState.put( MailKeys.mailParts, new Array() );
 
-		StringBuffer	buffer		= new StringBuffer();
+		StringBuffer buffer = new StringBuffer();
 
-		BodyResult		bodyResult	= processBody( context, body, buffer );
+		// Spoof being in the output component in case the app has enableoutputonly=true
+		context.pushComponent(
+		    Struct.of(
+		        Key._NAME, Key.output,
+		        Key._CLASS, null,
+		        Key.attributes, Struct.EMPTY
+		    )
+		);
+
+		BodyResult bodyResult = processBody( context, body, buffer );
 
 		// IF there was a return statement inside our body, we early exit now
 		if ( bodyResult.isEarlyExit() ) {

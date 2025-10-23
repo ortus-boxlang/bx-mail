@@ -1,6 +1,7 @@
 .gradle
 build/**
 bin/**
+docs/**
 !gradle/wrapper/gradle-wrapper.jar
 grapher/*
 
@@ -12,6 +13,7 @@ grapher/*
 
 ### BOXLANG ###
 /libs/
+/docs/
 src/test/resources/libs/*
 src/test/resources/tmp/*
 !src/test/resources/libs/.gitkeep

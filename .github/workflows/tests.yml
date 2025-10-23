@@ -23,7 +23,7 @@ jobs:
       fail-fast: false
       matrix:
         # We need to use a windows 2019 image for our Fake SMTP server
-        os: ["ubuntu-latest", "windows-2019"]
+        os: ["ubuntu-latest"] # , "windows-latest"
         jdkVersion: ["21"]
         experimental: [false]
         #include:
@@ -45,7 +45,7 @@ jobs:
           java-version: ${{ matrix.jdkVersion }}
 
       # Startup Fake SMTP
-      - uses: hoverkraft-tech/compose-action@v2.0.2
+      - uses: hoverkraft-tech/compose-action@v2.3.0
         with:
           compose-file: "./src/test/resources/fakesmtp/docker-compose.yml"
 
