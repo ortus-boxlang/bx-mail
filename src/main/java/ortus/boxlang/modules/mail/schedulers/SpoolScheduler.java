@@ -127,8 +127,8 @@ public class SpoolScheduler extends BaseScheduler {
 				    Email message;
 				    Boolean deleteAttachments = false;
 				    String mimeAttach		= null;
-				    if ( entry.value().get() instanceof Email ) {
-					    message = ( Email ) entry.value().get();
+				    if ( entry.value().get() instanceof Email emailObj ) {
+					    message = emailObj;
 				    } else {
 					    IStruct entryParams = StructCaster.cast( entry.value().get() );
 					    message = ( Email ) entryParams.get( Key.message );
