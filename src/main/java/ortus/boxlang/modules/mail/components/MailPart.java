@@ -30,7 +30,7 @@ import ortus.boxlang.runtime.scopes.Key;
 import ortus.boxlang.runtime.types.IStruct;
 import ortus.boxlang.runtime.validation.Validator;
 
-@BoxComponent( allowsBody = true, requiresBody = true )
+@BoxComponent( allowsBody = true, requiresBody = true, ignoreEnableOutputOnly = true, autoEvaluateBodyExpressions = true, description = "Processes a mail part within the body of a mail component" )
 public class MailPart extends Component {
 
 	public MailPart() {
