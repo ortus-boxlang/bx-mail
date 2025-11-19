@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Fixed
 
-- Updated behavior of `mail` and `mailpart` components to not require explicit output and auto-evaluate body expressions
+- [BL-1855](https://ortussolutions.atlassian.net/browse/BL-1855) - Updated behavior of `mail` and `mailpart` components to not require explicit output and auto-evaluate body expressions
 
 ## [1.4.3] - 2025-10-23
 
