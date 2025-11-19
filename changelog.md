@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## Fixed
+
+- Updated behavior of `mail` and `mailpart` components to not require explicit output and auto-evaluate body expressions
+
 ## [1.4.3] - 2025-10-23
 
 ## [1.4.1] - 2025-04-24
