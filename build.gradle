@@ -41,7 +41,7 @@ dependencies {
 	implementation 'org.apache.commons:commons-text:1.14.0'
 
 	// Bouncy castle encrytpion library
-	implementation 'org.bouncycastle:bcjmail-jdk18on:1.81'
+	implementation 'org.bouncycastle:bcjmail-jdk18on:1.82'
 
 	// BoxLang Runtime
 	// Look for it in the local build directory
