@@ -20,15 +20,16 @@ package ortus.boxlang.modules.mail.schedulers;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
-import org.apache.commons.mail2.core.EmailException;
 import org.apache.commons.mail2.jakarta.Email;
 
 import ortus.boxlang.modules.mail.util.MailKeys;
+import ortus.boxlang.modules.mail.util.MailUtil;
 import ortus.boxlang.runtime.BoxRuntime;
 import ortus.boxlang.runtime.async.tasks.BaseScheduler;
 import ortus.boxlang.runtime.async.tasks.ScheduledTask;
 import ortus.boxlang.runtime.cache.ICacheEntry;
 import ortus.boxlang.runtime.cache.providers.ICacheProvider;
+import ortus.boxlang.runtime.context.IBoxContext;
 import ortus.boxlang.runtime.dynamic.casters.BooleanCaster;
 import ortus.boxlang.runtime.dynamic.casters.DoubleCaster;
 import ortus.boxlang.runtime.dynamic.casters.IntegerCaster;
@@ -52,7 +53,7 @@ public class SpoolScheduler extends BaseScheduler {
 	private static final IStruct		moduleSettings			= runtime.getModuleService().getModuleSettings( MailKeys._MODULE_NAME );
 
 	private static final Boolean		logEnabled				= BooleanCaster.cast( moduleSettings.get( MailKeys.logEnabled ) );
-	private static final BoxLangLogger	logger					= runtime.getLoggingService().getLogger( "mail" );
+	private static final BoxLangLogger	logger					= runtime.getLoggingService().getLogger( "MailSpool" );
 
 	/**
 	 * Default constructor
@@ -127,27 +128,24 @@ public class SpoolScheduler extends BaseScheduler {
 				    Email message;
 				    Boolean deleteAttachments = false;
 				    String mimeAttach		= null;
-				    if ( entry.value().get() instanceof Email emailObj ) {
-					    message = emailObj;
-				    } else {
-					    IStruct entryParams = StructCaster.cast( entry.value().get() );
-					    message = ( Email ) entryParams.get( Key.message );
-					    IStruct entryAttributes = entryParams.getAsStruct( Key.attributes );
-					    deleteAttachments = BooleanCaster.cast( entryAttributes.get( MailKeys.remove ) );
-					    mimeAttach		= entryAttributes.getAsString( MailKeys.mimeAttach );
-				    }
-				    message.send();
+				    IStruct entryParams		= StructCaster.cast( entry.value().get() );
+				    message = ( Email ) entryParams.get( Key.message );
+				    IStruct	entryAttributes	= entryParams.getAsStruct( Key.attributes );
+				    IBoxContext context		= ( IBoxContext ) entryParams.get( Key.context );
+				    deleteAttachments = BooleanCaster.cast( entryAttributes.get( MailKeys.remove ) );
+				    mimeAttach		= entryAttributes.getAsString( MailKeys.mimeAttach );
+				    MailUtil.sendMessage( context, entryAttributes, message );
 				    if ( deleteAttachments && mimeAttach != null && FileSystemUtil.exists( mimeAttach ) ) {
 					    FileSystemUtil.deleteFile( mimeAttach );
 				    }
 				    result.put( MailKeys.processed, result.getAsInteger( MailKeys.processed ) + 1 );
 				    if ( logEnabled ) {
-					    logger.atInfo().log( String.format(
+					    logger.atDebug().log( String.format(
 					        "Message [%s] successfully sent",
 					        entry.key().getName()
 					    ) );
 				    }
-			    } catch ( EmailException e ) {
+			    } catch ( Exception e ) {
 				    result.put( MailKeys.failures, result.getAsInteger( MailKeys.failures ) + 1 );
 				    result.getAsArray( MailKeys.messages )
 				        .push(
@@ -159,6 +157,11 @@ public class SpoolScheduler extends BaseScheduler {
 				            )
 				        );
 				    bounced.set( entry.key().getName(), entry.value().get() );
+				    logger.atError().log( String.format(
+				        "Failed to send spooled message [%s]: %s",
+				        entry.key().getName(),
+				        e.getMessage()
+				    ) );
 			    } finally {
 				    cache.clear( entry.key().getName() );
 			    }
@@ -170,8 +173,12 @@ public class SpoolScheduler extends BaseScheduler {
 
 	protected static void onSpoolProcessed( ScheduledTask task, Optional outcome ) {
 		IStruct result = StructCaster.cast( outcome.get() );
-		if ( result == null ) {
-
+		if ( result != null && ( result.getAsInteger( MailKeys.processed ) > 0 || result.getAsInteger( MailKeys.failures ) > 0 ) ) {
+			logger.info( String.format(
+			    "Mail Spool processed. Successfully sent [%d] messages with [%d] failures. Please check the logs for additional details",
+			    result.getAsInteger( MailKeys.processed ),
+			    result.getAsInteger( MailKeys.failures )
+			) );
 		}
 	}
 
