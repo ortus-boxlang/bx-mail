@@ -29,7 +29,6 @@ import ortus.boxlang.runtime.async.tasks.BaseScheduler;
 import ortus.boxlang.runtime.async.tasks.ScheduledTask;
 import ortus.boxlang.runtime.cache.ICacheEntry;
 import ortus.boxlang.runtime.cache.providers.ICacheProvider;
-import ortus.boxlang.runtime.context.IBoxContext;
 import ortus.boxlang.runtime.dynamic.casters.BooleanCaster;
 import ortus.boxlang.runtime.dynamic.casters.DoubleCaster;
 import ortus.boxlang.runtime.dynamic.casters.IntegerCaster;
@@ -126,15 +125,13 @@ public class SpoolScheduler extends BaseScheduler {
 			    ICacheEntry entry = ( ICacheEntry ) opt.get();
 			    try {
 				    Email message;
-				    Boolean deleteAttachments = false;
-				    String mimeAttach		= null;
 				    IStruct entryParams		= StructCaster.cast( entry.value().get() );
+				    IStruct entryAttributes	= entryParams.getAsStruct( Key.attributes );
+				    Array mailServers		= entryParams.getAsArray( MailKeys.mailServers );
+				    Boolean deleteAttachments = BooleanCaster.cast( entryAttributes.getOrDefault( MailKeys.remove, false ) );
+				    String mimeAttach		= entryAttributes.getAsString( MailKeys.mimeAttach );
 				    message = ( Email ) entryParams.get( Key.message );
-				    IStruct	entryAttributes	= entryParams.getAsStruct( Key.attributes );
-				    IBoxContext context		= ( IBoxContext ) entryParams.get( Key.context );
-				    deleteAttachments = BooleanCaster.cast( entryAttributes.get( MailKeys.remove ) );
-				    mimeAttach		= entryAttributes.getAsString( MailKeys.mimeAttach );
-				    MailUtil.sendMessage( context, entryAttributes, message );
+				    MailUtil.sendMessage( mailServers, entryAttributes, message );
 				    if ( deleteAttachments && mimeAttach != null && FileSystemUtil.exists( mimeAttach ) ) {
 					    FileSystemUtil.deleteFile( mimeAttach );
 				    }

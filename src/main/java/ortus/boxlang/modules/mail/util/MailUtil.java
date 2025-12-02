@@ -42,7 +42,6 @@ import jakarta.mail.internet.MimeMultipart;
 import ortus.boxlang.runtime.BoxRuntime;
 import ortus.boxlang.runtime.context.IBoxContext;
 import ortus.boxlang.runtime.context.RequestBoxContext;
-import ortus.boxlang.runtime.context.ThreadBoxContext;
 import ortus.boxlang.runtime.dynamic.ExpressionInterpreter;
 import ortus.boxlang.runtime.dynamic.casters.BooleanCaster;
 import ortus.boxlang.runtime.dynamic.casters.IntegerCaster;
@@ -429,19 +428,14 @@ public class MailUtil {
 		}
 	}
 
-	public static void setMessageServer( IBoxContext context, IStruct attributes, Email message ) {
-		Array mailServers = getMailServers( context, attributes );
-		setMessageServer( context, attributes, message, StructCaster.cast( mailServers.get( 0 ) ) );
-	}
-
 	/**
 	 * Sets the message server parameters
 	 *
-	 * @param context
+	 * @param serverProperties
 	 * @param attributes
 	 * @param message
 	 */
-	public static void setMessageServer( IBoxContext context, IStruct attributes, Email message, IStruct serverProperties ) {
+	public static void setMessageServer( IStruct serverProperties, IStruct attributes, Email message ) {
 
 		String	username	= serverProperties.getAsString( Key.username );
 		Boolean	useSSL		= BooleanCaster.attempt( attributes.get( MailKeys.useSSL ) ).getOrDefault( null );
@@ -509,12 +503,13 @@ public class MailUtil {
 			Array				configMailServers	= requestContext.getConfig().getAsStruct( Key.originalConfig ).getAsArray( MailKeys.mailServers );
 			// Runtime settings servers
 			Array				settingsMailServers	= requestSettings.getAsArray( MailKeys.mailServers );
-			if ( moduleMailServers != null && moduleMailServers.size() > 0 ) {
+			// runtime first, then module, then raw config
+			if ( settingsMailServers != null && settingsMailServers.size() > 0 ) {
+				servers = settingsMailServers;
+			} else if ( moduleMailServers != null && moduleMailServers.size() > 0 ) {
 				servers = moduleMailServers;
 			} else if ( configMailServers != null && configMailServers.size() > 0 ) {
 				servers = configMailServers;
-			} else if ( settingsMailServers != null && settingsMailServers.size() > 0 ) {
-				servers = settingsMailServers;
 			} else {
 				throw new BoxRuntimeException( "No mail servers have been defined in any of the available configurations. The message cannot be sent." );
 			}
@@ -603,12 +598,9 @@ public class MailUtil {
 			spoolEnable = moduleSettings.getAsBoolean( MailKeys.spoolEnable );
 		}
 
-		if ( attributes.get( MailKeys.messageVariable ) != null ) {
-			ExpressionInterpreter.setVariable(
-			    context,
-			    attributes.getAsString( MailKeys.messageVariable ),
-			    message
-			);
+		if ( attributes.get( MailKeys.messageIdentifier ) != null || attributes.get( MailKeys.messageVariable ) != null ) {
+			// if we are setting a message identifier or variable, disable spooling
+			spoolEnable = false;
 		}
 
 		if ( spoolEnable ) {
@@ -619,30 +611,45 @@ public class MailUtil {
 			        Key.message, message,
 			        Key.priority, priority,
 			        Key.attributes, attributes,
-			        Key.context, new ThreadBoxContext( context )
+			        MailKeys.mailServers, getMailServers( context, attributes )
 			    )
 			);
 		} else {
-			sendMessage( context, attributes, message );
+			String messageRef = sendMessage( getMailServers( context, attributes ), attributes, message );
+
+			if ( attributes.get( MailKeys.messageVariable ) != null ) {
+				ExpressionInterpreter.setVariable(
+				    context,
+				    attributes.getAsString( MailKeys.messageVariable ),
+				    message
+				);
+			}
+
+			if ( messageRef != null && attributes.get( MailKeys.messageIdentifier ) != null ) {
+				ExpressionInterpreter.setVariable(
+				    context,
+				    attributes.getAsString( MailKeys.messageIdentifier ),
+				    messageRef
+				);
+			}
 		}
 	}
 
-	public static void sendMessage( IBoxContext context, IStruct attributes, Email message ) {
+	public static String sendMessage( Array mailServers, IStruct attributes, Email message ) {
 		String messageId = null;
 		try {
 			// try with our primary mail server
-			MailUtil.setMessageServer( context, attributes, message );
+			MailUtil.setMessageServer( StructCaster.cast( mailServers.get( 0 ) ), attributes, message );
 			try {
 				messageId = message.send();
 			} catch ( EmailException ee ) {
 				// if that fails, try any additional mail servers defined
 				logger.warn( "Primary mail server failed to send message. Attempting failover to any additional configured mail servers. Error: "
 				    + ee.getMessage(), ee );
-				Array mailServers = getMailServers( context, attributes );
 				if ( mailServers.size() > 1 ) {
 					for ( int i = 1; i < mailServers.size(); i++ ) {
 						IStruct serverProperties = StructCaster.cast( mailServers.get( i ) );
-						MailUtil.setMessageServer( context, attributes, message, serverProperties );
+						MailUtil.setMessageServer( serverProperties, attributes, message );
 						try {
 							messageId = message.send();
 							break;
@@ -657,17 +664,10 @@ public class MailUtil {
 					throw new EmailException( "All configured mail servers failed to send the message. Last error: " + ee.getMessage(), ee );
 				}
 			}
-			if ( attributes.get( MailKeys.messageIdentifier ) != null ) {
-				ExpressionInterpreter.setVariable(
-				    context,
-				    attributes.getAsString( MailKeys.messageIdentifier ),
-				    messageId
-				);
-			}
 			if ( attributes.getAsBoolean( MailKeys.remove ) && attributes.getAsString( MailKeys.mimeAttach ) != null ) {
 				FileSystemUtil.deleteFile( attributes.getAsString( MailKeys.mimeAttach ) );
 			}
-
+			return messageId;
 		} catch ( Exception e ) {
 			throw new BoxRuntimeException( "Message failed to send. " + e.getMessage(), e );
 		}
