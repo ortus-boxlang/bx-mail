@@ -47,6 +47,7 @@ import ortus.boxlang.runtime.dynamic.casters.BooleanCaster;
 import ortus.boxlang.runtime.dynamic.casters.IntegerCaster;
 import ortus.boxlang.runtime.dynamic.casters.StringCaster;
 import ortus.boxlang.runtime.dynamic.casters.StructCaster;
+import ortus.boxlang.runtime.logging.BoxLangLogger;
 import ortus.boxlang.runtime.scopes.Key;
 import ortus.boxlang.runtime.types.Array;
 import ortus.boxlang.runtime.types.IStruct;
@@ -62,6 +63,8 @@ public class MailUtil {
 	public static final BoxRuntime			runtime			= BoxRuntime.getInstance();
 
 	static final Key						spoolCache		= MailKeys.mailUnsent;
+
+	static final BoxLangLogger				logger			= runtime.getLoggingService().getLogger( "Mail" );
 
 	static final IStruct					mimeMap			= Struct.of(
 	    MailKeys.HTML, "text/html",
@@ -173,8 +176,6 @@ public class MailUtil {
 		if ( mailerid != null ) {
 			message.addHeader( "X-Mailer", mailerid );
 		}
-
-		MailUtil.setMessageServer( context, attributes, message );
 
 		MailUtil.setMessageRecipients( attributes, message );
 
@@ -430,35 +431,34 @@ public class MailUtil {
 	/**
 	 * Sets the message server parameters
 	 *
-	 * @param context
+	 * @param serverProperties
 	 * @param attributes
 	 * @param message
 	 */
-	public static void setMessageServer( IBoxContext context, IStruct attributes, Email message ) {
+	public static void setMessageServer( IStruct serverProperties, IStruct attributes, Email message ) {
 
-		IStruct	primaryServer	= StructCaster.cast( getMailServers( context, attributes ).get( 0 ) );
-		String	username		= primaryServer.getAsString( Key.username );
-		Boolean	useSSL			= BooleanCaster.attempt( attributes.get( MailKeys.useSSL ) ).getOrDefault( null );
-		Boolean	useTLS			= BooleanCaster.attempt( attributes.get( MailKeys.useTLS ) ).getOrDefault( null );
+		String	username	= serverProperties.getAsString( Key.username );
+		Boolean	useSSL		= BooleanCaster.attempt( attributes.get( MailKeys.useSSL ) ).getOrDefault( null );
+		Boolean	useTLS		= BooleanCaster.attempt( attributes.get( MailKeys.useTLS ) ).getOrDefault( null );
 
 		message.setPopBeforeSmtp( false );
-		message.setHostName( primaryServer.getAsString( Key.server ) );
-		message.setSmtpPort( IntegerCaster.cast( primaryServer.get( Key.port ) ) );
+		message.setHostName( serverProperties.getAsString( Key.server ) );
+		message.setSmtpPort( IntegerCaster.cast( serverProperties.get( Key.port ) ) );
 
 		if ( username != null && username.length() > 0 ) {
-			String password = primaryServer.getAsString( Key.password );
+			String password = serverProperties.getAsString( Key.password );
 			if ( password == null ) {
 				throw new BoxRuntimeException( "A password must be provided when specifying a username for SMTP authentication" );
 			}
 			message.setAuthentication( username, password );
 		}
 
-		if ( useTLS == null && primaryServer.getAsBoolean( MailKeys.TLS ) != null ) {
-			useTLS = primaryServer.getAsBoolean( MailKeys.TLS );
+		if ( useTLS == null && serverProperties.getAsBoolean( MailKeys.TLS ) != null ) {
+			useTLS = serverProperties.getAsBoolean( MailKeys.TLS );
 		}
 
-		if ( useSSL == null && primaryServer.getAsBoolean( MailKeys.SSL ) != null ) {
-			useSSL = primaryServer.getAsBoolean( MailKeys.SSL );
+		if ( useSSL == null && serverProperties.getAsBoolean( MailKeys.SSL ) != null ) {
+			useSSL = serverProperties.getAsBoolean( MailKeys.SSL );
 		}
 
 		if ( useTLS != null ) {
@@ -503,12 +503,13 @@ public class MailUtil {
 			Array				configMailServers	= requestContext.getConfig().getAsStruct( Key.originalConfig ).getAsArray( MailKeys.mailServers );
 			// Runtime settings servers
 			Array				settingsMailServers	= requestSettings.getAsArray( MailKeys.mailServers );
-			if ( moduleMailServers != null && moduleMailServers.size() > 0 ) {
+			// runtime first, then module, then raw config
+			if ( settingsMailServers != null && settingsMailServers.size() > 0 ) {
+				servers = settingsMailServers;
+			} else if ( moduleMailServers != null && moduleMailServers.size() > 0 ) {
 				servers = moduleMailServers;
 			} else if ( configMailServers != null && configMailServers.size() > 0 ) {
 				servers = configMailServers;
-			} else if ( settingsMailServers != null && settingsMailServers.size() > 0 ) {
-				servers = settingsMailServers;
 			} else {
 				throw new BoxRuntimeException( "No mail servers have been defined in any of the available configurations. The message cannot be sent." );
 			}
@@ -558,6 +559,10 @@ public class MailUtil {
 			);
 		}
 
+		if ( mailServers.size() == 0 ) {
+			throw new BoxRuntimeException( "No mail servers are currently configured to send email." );
+		}
+
 		return mailServers;
 	}
 
@@ -593,12 +598,9 @@ public class MailUtil {
 			spoolEnable = moduleSettings.getAsBoolean( MailKeys.spoolEnable );
 		}
 
-		if ( attributes.get( MailKeys.messageVariable ) != null ) {
-			ExpressionInterpreter.setVariable(
-			    context,
-			    attributes.getAsString( MailKeys.messageVariable ),
-			    message
-			);
+		if ( attributes.get( MailKeys.messageIdentifier ) != null || attributes.get( MailKeys.messageVariable ) != null ) {
+			// if we are setting a message identifier or variable, disable spooling
+			spoolEnable = false;
 		}
 
 		if ( spoolEnable ) {
@@ -608,27 +610,66 @@ public class MailUtil {
 			    Struct.of(
 			        Key.message, message,
 			        Key.priority, priority,
-			        Key.attributes, attributes
+			        Key.attributes, attributes,
+			        MailKeys.mailServers, getMailServers( context, attributes )
 			    )
 			);
 		} else {
-			try {
-				messageId = message.send();
-				if ( attributes.get( MailKeys.messageIdentifier ) != null ) {
-					ExpressionInterpreter.setVariable(
-					    context,
-					    attributes.getAsString( MailKeys.messageIdentifier ),
-					    messageId
-					);
-				}
-				if ( attributes.getAsBoolean( MailKeys.remove ) && attributes.getAsString( MailKeys.mimeAttach ) != null ) {
-					FileSystemUtil.deleteFile( attributes.getAsString( MailKeys.mimeAttach ) );
-				}
+			String messageRef = sendMessage( getMailServers( context, attributes ), attributes, message );
 
-			} catch ( Throwable e ) {
-				throw new BoxRuntimeException( "Message failed to send.", e );
+			if ( attributes.get( MailKeys.messageVariable ) != null ) {
+				ExpressionInterpreter.setVariable(
+				    context,
+				    attributes.getAsString( MailKeys.messageVariable ),
+				    message
+				);
+			}
+
+			if ( messageRef != null && attributes.get( MailKeys.messageIdentifier ) != null ) {
+				ExpressionInterpreter.setVariable(
+				    context,
+				    attributes.getAsString( MailKeys.messageIdentifier ),
+				    messageRef
+				);
 			}
 		}
+	}
 
+	public static String sendMessage( Array mailServers, IStruct attributes, Email message ) {
+		String messageId = null;
+		try {
+			// try with our primary mail server
+			MailUtil.setMessageServer( StructCaster.cast( mailServers.get( 0 ) ), attributes, message );
+			try {
+				messageId = message.send();
+			} catch ( EmailException ee ) {
+				// if that fails, try any additional mail servers defined
+				logger.warn( "Primary mail server failed to send message. Attempting failover to any additional configured mail servers. Error: "
+				    + ee.getMessage(), ee );
+				if ( mailServers.size() > 1 ) {
+					for ( int i = 1; i < mailServers.size(); i++ ) {
+						IStruct serverProperties = StructCaster.cast( mailServers.get( i ) );
+						MailUtil.setMessageServer( serverProperties, attributes, message );
+						try {
+							messageId = message.send();
+							break;
+						} catch ( EmailException eee ) {
+							logger.warn( "Failover mail server " + serverProperties.getAsString( Key.server )
+							    + " also failed to send the message. Error: " + eee.getMessage(), eee );
+							// continue to next server
+						}
+					}
+				}
+				if ( messageId == null ) {
+					throw new EmailException( "All configured mail servers failed to send the message. Last error: " + ee.getMessage(), ee );
+				}
+			}
+			if ( attributes.getAsBoolean( MailKeys.remove ) && attributes.getAsString( MailKeys.mimeAttach ) != null ) {
+				FileSystemUtil.deleteFile( attributes.getAsString( MailKeys.mimeAttach ) );
+			}
+			return messageId;
+		} catch ( Exception e ) {
+			throw new BoxRuntimeException( "Message failed to send. " + e.getMessage(), e );
+		}
 	}
 }
