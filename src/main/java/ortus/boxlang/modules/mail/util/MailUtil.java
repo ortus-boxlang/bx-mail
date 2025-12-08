@@ -635,6 +635,99 @@ public class MailUtil {
 		}
 	}
 
+	/**
+	 * Creates a new Email object with the same content and properties as the original,
+	 * but without the session initialization to allow for failover to different mail servers.
+	 *
+	 * @param original   the original Email object to clone
+	 * @param attributes the original attributes used to create the message
+	 *
+	 * @return a new Email object with the same properties but fresh session state
+	 */
+	public static Email cloneEmailMessage( Email original, IStruct attributes ) {
+		try {
+			Email clone;
+
+			// Create the same type of email object
+			if ( original instanceof MultiPartEmail originalMultipart ) {
+				clone = new MultiPartEmail();
+				// Copy the content from the original multipart message
+				MultiPartEmail cloneMultipart = ( MultiPartEmail ) clone;
+				if ( originalMultipart.getEmailBody() != null ) {
+					cloneMultipart.setContent( originalMultipart.getEmailBody() );
+				}
+			} else {
+				clone = new SimpleEmail();
+				// For SimpleEmail, we'll need to set the content using the original attributes
+				// This is handled later in the process since we have the attributes available
+			}
+
+			// Copy basic properties from original email
+			clone.setSubject( original.getSubject() );
+			clone.setDebug( original.isDebug() );
+
+			// Set charset from attributes since we can't get it from original
+			String charset = attributes.getAsString( Key.charset );
+			if ( charset != null ) {
+				clone.setCharset( charset );
+			}
+
+			// Copy from address
+			if ( original.getFromAddress() != null ) {
+				clone.setFrom( original.getFromAddress().getAddress(), original.getFromAddress().getPersonal() );
+			}
+
+			// Copy bounce address
+			if ( original.getBounceAddress() != null ) {
+				clone.setBounceAddress( original.getBounceAddress() );
+			}
+
+			// Copy recipients
+			original.getToAddresses().forEach( addr -> {
+				try {
+					clone.addTo( addr.getAddress(), addr.getPersonal() );
+				} catch ( EmailException e ) {
+					// Log and continue - this shouldn't fail if it worked for the original
+					logger.warn( "Failed to copy TO address during email clone: " + e.getMessage() );
+				}
+			} );
+
+			original.getCcAddresses().forEach( addr -> {
+				try {
+					clone.addCc( addr.getAddress(), addr.getPersonal() );
+				} catch ( EmailException e ) {
+					logger.warn( "Failed to copy CC address during email clone: " + e.getMessage() );
+				}
+			} );
+
+			original.getBccAddresses().forEach( addr -> {
+				try {
+					clone.addBcc( addr.getAddress(), addr.getPersonal() );
+				} catch ( EmailException e ) {
+					logger.warn( "Failed to copy BCC address during email clone: " + e.getMessage() );
+				}
+			} );
+
+			original.getReplyToAddresses().forEach( addr -> {
+				try {
+					clone.addReplyTo( addr.getAddress(), addr.getPersonal() );
+				} catch ( EmailException e ) {
+					logger.warn( "Failed to copy ReplyTo address during email clone: " + e.getMessage() );
+				}
+			} );
+
+			// Copy headers
+			original.getHeaders().forEach( ( key, value ) -> {
+				clone.addHeader( key, value );
+			} );
+
+			return clone;
+
+		} catch ( Exception e ) {
+			throw new BoxRuntimeException( "Failed to clone email message for failover: " + e.getMessage(), e );
+		}
+	}
+
 	public static String sendMessage( Array mailServers, IStruct attributes, Email message ) {
 		String messageId = null;
 		try {
@@ -648,10 +741,12 @@ public class MailUtil {
 				    + ee.getMessage(), ee );
 				if ( mailServers.size() > 1 ) {
 					for ( int i = 1; i < mailServers.size(); i++ ) {
-						IStruct serverProperties = StructCaster.cast( mailServers.get( i ) );
-						MailUtil.setMessageServer( serverProperties, attributes, message );
+						IStruct	serverProperties	= StructCaster.cast( mailServers.get( i ) );
+						// Create a fresh email object for each failover attempt to avoid session initialization conflicts
+						Email	failoverMessage		= cloneEmailMessage( message, attributes );
+						MailUtil.setMessageServer( serverProperties, attributes, failoverMessage );
 						try {
-							messageId = message.send();
+							messageId = failoverMessage.send();
 							break;
 						} catch ( EmailException eee ) {
 							logger.warn( "Failover mail server " + serverProperties.getAsString( Key.server )
