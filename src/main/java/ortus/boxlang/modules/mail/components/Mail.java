@@ -28,6 +28,7 @@ import ortus.boxlang.runtime.context.IBoxContext;
 import ortus.boxlang.runtime.scopes.Key;
 import ortus.boxlang.runtime.types.Array;
 import ortus.boxlang.runtime.types.IStruct;
+import ortus.boxlang.runtime.types.Struct;
 import ortus.boxlang.runtime.validation.Validator;
 
 @BoxComponent( allowsBody = true, requiresBody = true, ignoreEnableOutputOnly = true, autoEvaluateBodyExpressions = true, description = "wraps an encompassing mail message and sends it to the specified recipients" )
@@ -144,9 +145,18 @@ public class Mail extends Component {
 		executionState.put( MailKeys.mailParams, new Array() );
 		executionState.put( MailKeys.mailParts, new Array() );
 
-		StringBuffer	buffer		= new StringBuffer();
+		StringBuffer buffer = new StringBuffer();
 
-		BodyResult		bodyResult	= processBody( context, body, buffer );
+		// Spoof being in the output component in case the app has enableoutputonly=true
+		context.pushComponent(
+		    Struct.of(
+		        Key._NAME, Key.output,
+		        Key._CLASS, null,
+		        Key.attributes, Struct.EMPTY
+		    )
+		);
+
+		BodyResult bodyResult = processBody( context, body, buffer );
 
 		// IF there was a return statement inside our body, we early exit now
 		if ( bodyResult.isEarlyExit() ) {
