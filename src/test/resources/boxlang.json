@@ -1,6 +1,17 @@
 {
 	"modulesDirectory": ["${user-dir}/src/main"],
 	"mailServers": [
+		// Uncomment to test the failover functionality
+		// {
+		// 	"tls": false,
+		// 	"password": "",
+		// 	"idleTimeout": "10000",
+		// 	"lifeTimeout": "60000",
+		// 	"port": "587",
+		// 	"username": "",
+		// 	"ssl": false,
+		// 	"smtp": "badserver"
+		// },
 		{
 			"tls": false,
 			"password": "",

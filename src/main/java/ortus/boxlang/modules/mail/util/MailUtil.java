@@ -654,12 +654,11 @@ public class MailUtil {
 				// Copy the content from the original multipart message
 				MultiPartEmail cloneMultipart = ( MultiPartEmail ) clone;
 				if ( originalMultipart.getEmailBody() != null ) {
-					cloneMultipart.setContent( originalMultipart.getEmailBody() );
+					cloneMultipart.setContent( originalMultipart.getEmailBody(), originalMultipart.getEmailBody().getContentType() );
 				}
 			} else {
 				clone = new SimpleEmail();
-				// For SimpleEmail, we'll need to set the content using the original attributes
-				// This is handled later in the process since we have the attributes available
+				clone.setContent( original.getContent(), original.getContentType() );
 			}
 
 			// Copy basic properties from original email
@@ -729,6 +728,19 @@ public class MailUtil {
 	}
 
 	public static String sendMessage( Array mailServers, IStruct attributes, Email message ) {
+		if ( logger.isTraceEnabled() ) {
+			String sanitizedMailServersString = mailServers.stream()
+			    .map( StructCaster::cast )
+			    .map( ( server ) -> {
+				    if ( server.containsKey( Key.password ) ) {
+					    server.put( Key.password, "****" );
+				    }
+				    return server;
+			    } )
+			    .collect( BLCollector.toArray() )
+			    .asString();
+			logger.trace( "Attempting to send email message using configured mail servers: " + sanitizedMailServersString );
+		}
 		String messageId = null;
 		try {
 			// try with our primary mail server
@@ -737,8 +749,13 @@ public class MailUtil {
 				messageId = message.send();
 			} catch ( EmailException ee ) {
 				// if that fails, try any additional mail servers defined
-				logger.warn( "Primary mail server failed to send message. Attempting failover to any additional configured mail servers. Error: "
-				    + ee.getMessage(), ee );
+				if ( logger.isWarnEnabled() ) {
+					String warnMessage = "Primary mail server failed to send message.";
+					if ( mailServers.size() > 1 ) {
+						warnMessage += " Attempting failover to any additional configured mail servers.";
+					}
+					logger.warn( warnMessage + " Error: " + ee.getMessage(), ee );
+				}
 				if ( mailServers.size() > 1 ) {
 					for ( int i = 1; i < mailServers.size(); i++ ) {
 						IStruct	serverProperties	= StructCaster.cast( mailServers.get( i ) );
