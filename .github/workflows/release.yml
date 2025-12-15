@@ -116,7 +116,7 @@ jobs:
 
       - name: Upload Build Artifacts
         if: success()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: bx-mail-build-${{env.version}}-${{env.BUILD_ID}}
           path: |
