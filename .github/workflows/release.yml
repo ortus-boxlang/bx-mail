@@ -199,7 +199,7 @@ jobs:
           gradle-version: ${{ env.GRADLE }}
 
       - name: Download build artifacts
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           name: bx-mail-build-${{env.version}}-${{env.BUILD_ID}}
           path: .tmp
