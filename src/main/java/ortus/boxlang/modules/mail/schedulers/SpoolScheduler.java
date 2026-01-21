@@ -99,6 +99,7 @@ public class SpoolScheduler extends BaseScheduler {
 		task( "SpoolTask" )
 		    .call( SpoolScheduler::processSpool )
 		    .every( spoolIntervalMillis, TimeUnit.MILLISECONDS )
+		    .setNoOverlaps( true )
 		    .onFailure( SpoolScheduler::onSpoolFailure )
 		    .onSuccess( SpoolScheduler::onSpoolProcessed );
 
