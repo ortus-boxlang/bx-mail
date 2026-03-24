@@ -157,6 +157,7 @@ public class MailUtil {
 			messageType = "text/html";
 		} else if ( mimeMap.containsKey( Key.of( messageType ) ) ) {
 			messageType = mimeMap.getAsString( Key.of( messageType ) );
+			attributes.put( Key.type, messageType );
 		}
 
 		message.setContentType( messageType.toLowerCase() );
