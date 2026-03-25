@@ -199,7 +199,7 @@ public class MailUtil {
 
 		message.setBounceAddress( failTo != null ? IDNConverter.toASCII( failTo ) : IDNConverter.toASCII( attributes.getAsString( Key.from ) ) );
 
-		ListUtil.asList( to, ", ", false, false )
+		ListUtil.asList( to, ";, ", false, false )
 		    .stream()
 		    .forEach( address -> {
 			    try {
