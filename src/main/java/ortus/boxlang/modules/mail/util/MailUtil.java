@@ -463,6 +463,7 @@ public class MailUtil {
 		}
 
 		if ( useTLS != null ) {
+			message.setStartTLSEnabled( useTLS );
 			message.setStartTLSRequired( useTLS );
 		}
 
