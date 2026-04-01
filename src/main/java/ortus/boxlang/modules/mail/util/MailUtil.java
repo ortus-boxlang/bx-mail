@@ -128,7 +128,7 @@ public class MailUtil {
 		IStruct	moduleSettings	= runtime.getModuleService().getModuleSettings( MailKeys._MODULE_NAME );
 		String	from			= attributes.getAsString( Key.from );
 		String	charset			= attributes.getAsString( Key.charset );
-		Boolean	debug			= attributes.getAsBoolean( MailKeys.debug );
+		Boolean	debug			= BooleanCaster.attempt( attributes.get( MailKeys.debug ) ).getOrDefault( null );
 		String	mailerid		= attributes.getAsString( MailKeys.mailerid );
 		String	mimeAttach		= attributes.getAsString( MailKeys.mimeAttach );
 		String	subject			= attributes.getAsString( MailKeys.subject );
@@ -137,8 +137,8 @@ public class MailUtil {
 		// Encryption attributes
 		// Check for any signature settings in the configuration
 		MailUtil.applySignatureSettings( attributes );
-		Boolean	sign		= attributes.getAsBoolean( MailKeys.sign );
-		Boolean	encrypt		= attributes.getAsBoolean( MailKeys.encrypt );
+		Boolean	sign		= BooleanCaster.attempt( attributes.get( MailKeys.sign ) ).getOrDefault( null );
+		Boolean	encrypt		= BooleanCaster.attempt( attributes.get( MailKeys.encrypt ) ).getOrDefault( null );
 
 		Array	mailParams	= executionState.getAsArray( MailKeys.mailParams );
 		Array	mailParts	= executionState.getAsArray( MailKeys.mailParts );
@@ -439,8 +439,8 @@ public class MailUtil {
 	public static void setMessageServer( IStruct serverProperties, IStruct attributes, Email message ) {
 
 		String	username	= serverProperties.getAsString( Key.username );
-		Boolean	useSSL		= BooleanCaster.attempt( attributes.get( MailKeys.useSSL ) ).getOrDefault( null );
-		Boolean	useTLS		= BooleanCaster.attempt( attributes.get( MailKeys.useTLS ) ).getOrDefault( null );
+		Boolean	useSSL		= attributes.get( MailKeys.useSSL ) != null ? BooleanCaster.cast( attributes.get( MailKeys.useSSL ) ) : null;
+		Boolean	useTLS		= attributes.get( MailKeys.useTLS ) != null ? BooleanCaster.cast( attributes.get( MailKeys.useTLS ) ) : null;
 
 		message.setPopBeforeSmtp( false );
 		message.setHostName( serverProperties.getAsString( Key.server ) );
@@ -454,12 +454,12 @@ public class MailUtil {
 			message.setAuthentication( username, password );
 		}
 
-		if ( useTLS == null && serverProperties.getAsBoolean( MailKeys.TLS ) != null ) {
-			useTLS = serverProperties.getAsBoolean( MailKeys.TLS );
+		if ( useTLS == null && serverProperties.get( MailKeys.TLS ) != null ) {
+			useTLS = BooleanCaster.attempt( serverProperties.get( MailKeys.TLS ) ).getOrDefault( null );
 		}
 
-		if ( useSSL == null && serverProperties.getAsBoolean( MailKeys.SSL ) != null ) {
-			useSSL = serverProperties.getAsBoolean( MailKeys.SSL );
+		if ( useSSL == null && serverProperties.get( MailKeys.SSL ) != null ) {
+			useSSL = BooleanCaster.attempt( serverProperties.get( MailKeys.SSL ) ).getOrDefault( null );
 		}
 
 		if ( useTLS != null ) {
