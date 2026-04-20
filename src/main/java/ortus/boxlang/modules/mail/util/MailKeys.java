@@ -87,4 +87,28 @@ public class MailKeys {
 	public static final Key	useTLS					= Key.of( "useTLS" );
 	public static final Key	wrapText				= Key.of( "wrapText" );
 
+	// Additional keys for email serialization
+	public static final Key	emailType				= Key.of( "emailType" );
+	public static final Key	contentType				= Key.of( "contentType" );
+	public static final Key	fromAddress				= Key.of( "fromAddress" );
+	public static final Key	bounceAddress			= Key.of( "bounceAddress" );
+	public static final Key	toAddresses				= Key.of( "toAddresses" );
+	public static final Key	ccAddresses				= Key.of( "ccAddresses" );
+	public static final Key	bccAddresses			= Key.of( "bccAddresses" );
+	public static final Key	replyToAddresses		= Key.of( "replyToAddresses" );
+	public static final Key	emailBody				= Key.of( "emailBody" );
+	public static final Key	emailBodyContentType	= Key.of( "emailBodyContentType" );
+	public static final Key	mailSessionProperties	= Key.of( "mailSessionProperties" );
+	public static final Key	headers					= Key.of( "headers" );
+
+	// Attachment-related keys
+	public static final Key	attachments				= Key.of( "attachments" );
+	public static final Key	attachmentName			= Key.of( "attachmentName" );
+	public static final Key	attachmentPath			= Key.of( "attachmentPath" );
+	public static final Key	attachmentContent		= Key.of( "attachmentContent" );
+	public static final Key	attachmentContentType	= Key.of( "attachmentContentType" );
+	public static final Key	attachmentDisposition	= Key.of( "attachmentDisposition" );
+	public static final Key	attachmentDescription	= Key.of( "attachmentDescription" );
+	public static final Key	attachmentCid			= Key.of( "attachmentCid" );
+
 }

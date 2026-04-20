@@ -610,7 +610,7 @@ public class MailUtil {
 			runtime.getCacheService().getCache( spoolCache ).set(
 			    messageId,
 			    Struct.of(
-			        Key.message, message,
+			        Key.message, emailToSerializableStruct( message, attributes ),
 			        Key.priority, priority,
 			        Key.attributes, attributes,
 			        MailKeys.mailServers, getMailServers( context, attributes )
@@ -726,6 +726,202 @@ public class MailUtil {
 
 		} catch ( Exception e ) {
 			throw new BoxRuntimeException( "Failed to clone email message for failover: " + e.getMessage(), e );
+		}
+	}
+
+	/**
+	 * Converts an Email object to a serializable representation
+	 *
+	 * @param email      The Email object to serialize
+	 * @param attributes The attributes used to create the email
+	 *
+	 * @return A serializable Struct containing all email data
+	 */
+	public static IStruct emailToSerializableStruct( Email email, IStruct attributes ) {
+		try {
+			IStruct emailData = new Struct();
+
+			// Store basic properties
+			emailData.put( MailKeys.subject, email.getSubject() );
+			emailData.put( Key.content, email.getContent() );
+			emailData.put( MailKeys.contentType, email.getContentType() );
+			emailData.put( MailKeys.debug, email.isDebug() );
+			emailData.put( Key.charset, attributes.get( Key.charset ) );
+
+			// Store email type
+			emailData.put( MailKeys.emailType, email instanceof MultiPartEmail ? "multipart" : "simple" );
+
+			// Store addresses
+			if ( email.getFromAddress() != null ) {
+				emailData.put( MailKeys.fromAddress, Struct.of(
+				    Key.email, email.getFromAddress().getAddress(),
+				    Key._NAME, email.getFromAddress().getPersonal()
+				) );
+			}
+
+			if ( email.getBounceAddress() != null ) {
+				emailData.put( MailKeys.bounceAddress, email.getBounceAddress() );
+			}
+
+			// Store recipient lists
+			emailData.put( MailKeys.toAddresses, email.getToAddresses().stream()
+			    .map( addr -> ( IStruct ) Struct.of( Key.email, addr.getAddress(), Key._NAME, addr.getPersonal() ) )
+			    .collect( BLCollector.toArray() ) );
+
+			emailData.put( MailKeys.ccAddresses, email.getCcAddresses().stream()
+			    .map( addr -> ( IStruct ) Struct.of( Key.email, addr.getAddress(), Key._NAME, addr.getPersonal() ) )
+			    .collect( BLCollector.toArray() ) );
+
+			emailData.put( MailKeys.bccAddresses, email.getBccAddresses().stream()
+			    .map( addr -> ( IStruct ) Struct.of( Key.email, addr.getAddress(), Key._NAME, addr.getPersonal() ) )
+			    .collect( BLCollector.toArray() ) );
+
+			emailData.put( MailKeys.replyToAddresses, email.getReplyToAddresses().stream()
+			    .map( addr -> ( IStruct ) Struct.of( Key.email, addr.getAddress(), Key._NAME, addr.getPersonal() ) )
+			    .collect( BLCollector.toArray() ) );
+
+			// Store headers
+			emailData.put( Key.headers, new Struct( email.getHeaders() ) );
+
+			// Store multipart content if applicable
+			if ( email instanceof MultiPartEmail multipartEmail && multipartEmail.getEmailBody() != null ) {
+				try {
+					// For multipart emails, we need to serialize the content differently
+					// since MimeMultipart doesn't have a simple getContent() method
+					emailData.put( MailKeys.emailBody, "multipart content" );
+					emailData.put( MailKeys.emailBodyContentType, multipartEmail.getEmailBody().getContentType() );
+				} catch ( Exception e ) {
+					logger.warn( "Failed to serialize multipart email body: " + e.getMessage() );
+				}
+			}
+
+			return emailData;
+
+		} catch ( Exception e ) {
+			throw new BoxRuntimeException( "Failed to serialize email to struct: " + e.getMessage(), e );
+		}
+	}
+
+	/**
+	 * Reconstructs an Email object from a serializable representation
+	 *
+	 * @param emailData The serializable email data
+	 *
+	 * @return A new Email object
+	 */
+	public static Email emailFromSerializableStruct( IStruct emailData ) {
+		try {
+			Email	email;
+
+			// Create the appropriate email type
+			String	emailType	= emailData.getAsString( MailKeys.emailType );
+			if ( "multipart".equals( emailType ) ) {
+				email = new MultiPartEmail();
+				// Set multipart content if available
+				if ( emailData.containsKey( MailKeys.emailBody ) && emailData.get( MailKeys.emailBody ) != null ) {
+					MultiPartEmail	multipart	= ( MultiPartEmail ) email;
+					Object			emailBody	= emailData.get( MailKeys.emailBody );
+					String			contentType	= emailData.getAsString( MailKeys.emailBodyContentType );
+					if ( emailBody != null && contentType != null ) {
+						multipart.setContent( emailBody, contentType );
+					}
+				}
+			} else {
+				email = new SimpleEmail();
+			}
+
+			// Set basic properties
+			if ( emailData.get( MailKeys.subject ) != null ) {
+				email.setSubject( emailData.getAsString( MailKeys.subject ) );
+			}
+
+			if ( emailData.get( Key.content ) != null && !"multipart".equals( emailType ) ) {
+				String contentType = emailData.getAsString( MailKeys.contentType );
+				email.setContent( emailData.get( Key.content ), contentType );
+			}
+
+			if ( emailData.get( MailKeys.debug ) != null ) {
+				email.setDebug( BooleanCaster.cast( emailData.get( MailKeys.debug ) ) );
+			}
+
+			if ( emailData.get( Key.charset ) != null ) {
+				email.setCharset( emailData.getAsString( Key.charset ) );
+			}
+
+			// Set from address
+			if ( emailData.containsKey( MailKeys.fromAddress ) && emailData.get( MailKeys.fromAddress ) != null ) {
+				IStruct fromAddr = StructCaster.cast( emailData.get( MailKeys.fromAddress ) );
+				email.setFrom( fromAddr.getAsString( Key.email ), fromAddr.getAsString( Key._NAME ) );
+			}
+
+			// Set bounce address
+			if ( emailData.get( MailKeys.bounceAddress ) != null ) {
+				email.setBounceAddress( emailData.getAsString( MailKeys.bounceAddress ) );
+			}
+
+			// Add recipients
+			Array toAddresses = emailData.getAsArray( MailKeys.toAddresses );
+			if ( toAddresses != null ) {
+				toAddresses.forEach( addr -> {
+					IStruct addrStruct = StructCaster.cast( addr );
+					try {
+						email.addTo( addrStruct.getAsString( Key.email ), addrStruct.getAsString( Key._NAME ) );
+					} catch ( EmailException e ) {
+						logger.warn( "Failed to add TO address during email deserialization: " + e.getMessage() );
+					}
+				} );
+			}
+
+			Array ccAddresses = emailData.getAsArray( MailKeys.ccAddresses );
+			if ( ccAddresses != null ) {
+				ccAddresses.forEach( addr -> {
+					IStruct addrStruct = StructCaster.cast( addr );
+					try {
+						email.addCc( addrStruct.getAsString( Key.email ), addrStruct.getAsString( Key._NAME ) );
+					} catch ( EmailException e ) {
+						logger.warn( "Failed to add CC address during email deserialization: " + e.getMessage() );
+					}
+				} );
+			}
+
+			Array bccAddresses = emailData.getAsArray( MailKeys.bccAddresses );
+			if ( bccAddresses != null ) {
+				bccAddresses.forEach( addr -> {
+					IStruct addrStruct = StructCaster.cast( addr );
+					try {
+						email.addBcc( addrStruct.getAsString( Key.email ), addrStruct.getAsString( Key._NAME ) );
+					} catch ( EmailException e ) {
+						logger.warn( "Failed to add BCC address during email deserialization: " + e.getMessage() );
+					}
+				} );
+			}
+
+			Array replyToAddresses = emailData.getAsArray( MailKeys.replyToAddresses );
+			if ( replyToAddresses != null ) {
+				replyToAddresses.forEach( addr -> {
+					IStruct addrStruct = StructCaster.cast( addr );
+					try {
+						email.addReplyTo( addrStruct.getAsString( Key.email ), addrStruct.getAsString( Key._NAME ) );
+					} catch ( EmailException e ) {
+						logger.warn( "Failed to add ReplyTo address during email deserialization: " + e.getMessage() );
+					}
+				} );
+			}
+
+			// Add headers
+			IStruct headers = emailData.getAsStruct( Key.headers );
+			if ( headers != null ) {
+				headers.forEach( ( key, value ) -> {
+					if ( value != null ) {
+						email.addHeader( key.getName(), value.toString() );
+					}
+				} );
+			}
+
+			return email;
+
+		} catch ( Exception e ) {
+			throw new BoxRuntimeException( "Failed to deserialize email from struct: " + e.getMessage(), e );
 		}
 	}
 
