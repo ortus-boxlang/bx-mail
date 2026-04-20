@@ -137,13 +137,16 @@ public class MailUtil {
 		// Encryption attributes
 		// Check for any signature settings in the configuration
 		MailUtil.applySignatureSettings( attributes );
-		Boolean	sign		= BooleanCaster.attempt( attributes.get( MailKeys.sign ) ).getOrDefault( null );
-		Boolean	encrypt		= BooleanCaster.attempt( attributes.get( MailKeys.encrypt ) ).getOrDefault( null );
+		Boolean	sign			= BooleanCaster.attempt( attributes.get( MailKeys.sign ) ).getOrDefault( null );
+		Boolean	encrypt			= BooleanCaster.attempt( attributes.get( MailKeys.encrypt ) ).getOrDefault( null );
 
-		Array	mailParams	= executionState.getAsArray( MailKeys.mailParams );
-		Array	mailParts	= executionState.getAsArray( MailKeys.mailParts );
+		Array	mailParams		= executionState.getAsArray( MailKeys.mailParams );
+		boolean	hasFileParams	= mailParams.stream().map( StructCaster::cast )
+		    .filter( param -> param.get( Key._NAME ) == null && param.get( Key.file ) != null )
+		    .count() > 0;
+		Array	mailParts		= executionState.getAsArray( MailKeys.mailParts );
 
-		Email	message		= ( sign || encrypt || mimeAttach != null || mailParts.size() > 0 || mailParams.size() > 0 )
+		Email	message			= ( sign || encrypt || mimeAttach != null || mailParts.size() > 0 || hasFileParams )
 		    ? new MultiPartEmail()
 		    : new SimpleEmail();
 
@@ -152,6 +155,11 @@ public class MailUtil {
 		message.setSubject( subject );
 
 		message.setCharset( charset == null ? moduleSettings.getAsString( MailKeys.defaultEncoding ) : charset );
+
+		// Process our headers and content type
+		mailParams.stream().map( StructCaster::cast )
+		    .filter( part -> part.getAsString( Key._NAME ) != null )
+		    .forEach( part -> message.addHeader( part.getAsString( Key._NAME ), part.getAsString( Key.value ) ) );
 
 		if ( messageType == null ) {
 			messageType = "text/html";
@@ -285,13 +293,15 @@ public class MailUtil {
 			}
 		}
 		// Process the content parts ( e.g. text & html )
-		boolean hasContentParts = mailParts.size() > 0
+		boolean	hasFileParams	= mailParams.stream().map( StructCaster::cast )
+		    .filter( param -> param.get( Key._NAME ) == null && param.get( Key.file ) != null ).count() > 0;
+		boolean	hasContentParts	= mailParts.size() > 0
 		    &&
 		    mailParts.stream().map( StructCaster::cast )
 		        .anyMatch(
 		            item -> item.getAsString( Key.type ).toLowerCase().contains( "text" ) || item.getAsString( Key.type ).toLowerCase().contains( "html" ) );
 		if ( !hasContentParts ) {
-			if ( !encrypt && !sign && mailParams.size() == 0 ) {
+			if ( !encrypt && !sign && !hasFileParams ) {
 				message.setContent( buffer.toString() );
 				message.setContentType( "text/plain" );
 			} else {
@@ -312,9 +322,10 @@ public class MailUtil {
 			    } );
 
 		}
+
 		// Process any file attachments
 		mailParams.stream().map( StructCaster::cast )
-		    .filter( param -> param.get( Key.file ) != null )
+		    .filter( param -> param.get( Key._NAME ) == null && param.get( Key.file ) != null )
 		    .forEach( param -> {
 			    Path filePath = Path.of( param.getAsString( Key.file ) );
 			    try {

@@ -291,6 +291,7 @@ public class MailTest {
 		       messageIdentifier="messageId"
 		       messageVariable="messageVar"
 		       		>
+		    <bx:mailparam name="X-Priority" value="1" />
 		       <bx:mailpart type="text">
 		    Hello mail!
 		    </bx:mailpart>
@@ -313,6 +314,7 @@ public class MailTest {
 		assertEquals( "Mail Test", StringCaster.cast( message.getSubject() ).trim() );
 		assertEquals( "jclausen@ortussolutions.com", message.getToAddresses().get( 0 ).toString() );
 		assertEquals( "jclausen@ortussolutions.com", message.getFromAddress().toString() );
+		assertEquals( "1", message.getHeader( "X-Priority" ) );
 	}
 
 	@DisplayName( "It can test a basic sending of mail with a mime attachment" )
