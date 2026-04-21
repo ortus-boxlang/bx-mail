@@ -215,6 +215,37 @@ public class MailTest {
 		assertEquals( "jclausen@ortussolutions.com", message.getFromAddress().toString() );
 	}
 
+	@DisplayName( "It can test a basic sending of mail alternate delimiters" )
+	@Test
+	public void testMailComponentAlternateDelimiters() {
+		// @formatter:off
+		instance.executeSource(
+		    """
+				bx:mail
+				from="jclausen@ortussolutions.com"
+				to="jclausen@ortussolutions.com;lmajano@ortussolutions.com,brad@ortussolutions.com"
+				subject="Mail Test"
+				server="127.0.0.1"
+				port="25"
+				spoolEnable="false"
+				debug="true"
+				messageIdentifier="messageId"
+				messageVariable="messageVar"
+				{
+					writeOutput( "Hello mail!" );
+				}
+			""",
+		    context, BoxSourceType.BOXSCRIPT );
+		// @formatter:on
+
+		assertTrue( variables.get( messageId ) instanceof String );
+		assertTrue( variables.get( messageVar ) instanceof Email );
+		Email message = ( Email ) variables.get( messageVar );
+		assertEquals( "Hello mail!", StringCaster.cast( message.getContent() ).trim() );
+		assertEquals( "Mail Test", StringCaster.cast( message.getSubject() ).trim() );
+		assertEquals( "jclausen@ortussolutions.com", message.getFromAddress().toString() );
+	}
+
 	@DisplayName( "It can test a basic sending of mail using the default config settings" )
 	@Test
 	public void testDefaultSettings() {
@@ -260,6 +291,7 @@ public class MailTest {
 		       messageIdentifier="messageId"
 		       messageVariable="messageVar"
 		       		>
+		    <bx:mailparam name="X-Priority" value="1" />
 		       <bx:mailpart type="text">
 		    Hello mail!
 		    </bx:mailpart>
@@ -282,6 +314,7 @@ public class MailTest {
 		assertEquals( "Mail Test", StringCaster.cast( message.getSubject() ).trim() );
 		assertEquals( "jclausen@ortussolutions.com", message.getToAddresses().get( 0 ).toString() );
 		assertEquals( "jclausen@ortussolutions.com", message.getFromAddress().toString() );
+		assertEquals( "1", message.getHeader( "X-Priority" ) );
 	}
 
 	@DisplayName( "It can test a basic sending of mail with a mime attachment" )

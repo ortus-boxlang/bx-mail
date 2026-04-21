@@ -99,6 +99,7 @@ public class SpoolScheduler extends BaseScheduler {
 		task( "SpoolTask" )
 		    .call( SpoolScheduler::processSpool )
 		    .every( spoolIntervalMillis, TimeUnit.MILLISECONDS )
+		    .setNoOverlaps( true )
 		    .onFailure( SpoolScheduler::onSpoolFailure )
 		    .onSuccess( SpoolScheduler::onSpoolProcessed );
 
@@ -130,7 +131,11 @@ public class SpoolScheduler extends BaseScheduler {
 				    Array mailServers		= entryParams.getAsArray( MailKeys.mailServers );
 				    Boolean deleteAttachments = BooleanCaster.cast( entryAttributes.getOrDefault( MailKeys.remove, false ) );
 				    String mimeAttach		= entryAttributes.getAsString( MailKeys.mimeAttach );
-				    message = ( Email ) entryParams.get( Key.message );
+
+				    // Deserialize the email from cached data
+				    IStruct messageData		= entryParams.getAsStruct( Key.message );
+				    message = MailUtil.emailFromSerializableStruct( messageData );
+
 				    MailUtil.sendMessage( mailServers, entryAttributes, message );
 				    if ( deleteAttachments && mimeAttach != null && FileSystemUtil.exists( mimeAttach ) ) {
 					    FileSystemUtil.deleteFile( mimeAttach );

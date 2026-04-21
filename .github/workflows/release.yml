@@ -116,7 +116,7 @@ jobs:
 
       - name: Upload Build Artifacts
         if: success()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: bx-mail-build-${{env.version}}-${{env.BUILD_ID}}
           path: |
@@ -152,7 +152,7 @@ jobs:
           cd $GITHUB_WORKSPACE
 
       - name: Create Github Release
-        uses: taiki-e/create-gh-release-action@v1.9.1
+        uses: taiki-e/create-gh-release-action@v1.9.3
         continue-on-error: true
         if: env.SNAPSHOT == 'false'
         id: create_release
@@ -199,7 +199,7 @@ jobs:
           gradle-version: ${{ env.GRADLE }}
 
       - name: Download build artifacts
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           name: bx-mail-build-${{env.version}}-${{env.BUILD_ID}}
           path: .tmp
