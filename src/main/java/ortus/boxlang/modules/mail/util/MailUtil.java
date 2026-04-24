@@ -618,14 +618,15 @@ public class MailUtil {
 
 		if ( spoolEnable ) {
 			messageId = UUID.randomUUID().toString();
+			IStruct emailData = Struct.of(
+			    Key.message, emailToSerializableStruct( message, attributes ),
+			    Key.priority, priority,
+			    Key.attributes, attributes,
+			    MailKeys.mailServers, getMailServers( context, attributes )
+			);
 			runtime.getCacheService().getCache( spoolCache ).set(
 			    messageId,
-			    Struct.of(
-			        Key.message, emailToSerializableStruct( message, attributes ),
-			        Key.priority, priority,
-			        Key.attributes, attributes,
-			        MailKeys.mailServers, getMailServers( context, attributes )
-			    )
+			    emailData
 			);
 		} else {
 			String messageRef = sendMessage( getMailServers( context, attributes ), attributes, message );

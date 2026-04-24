@@ -27,7 +27,6 @@ import ortus.boxlang.modules.mail.util.MailUtil;
 import ortus.boxlang.runtime.BoxRuntime;
 import ortus.boxlang.runtime.async.tasks.BaseScheduler;
 import ortus.boxlang.runtime.async.tasks.ScheduledTask;
-import ortus.boxlang.runtime.cache.ICacheEntry;
 import ortus.boxlang.runtime.cache.providers.ICacheProvider;
 import ortus.boxlang.runtime.dynamic.casters.BooleanCaster;
 import ortus.boxlang.runtime.dynamic.casters.DoubleCaster;
@@ -110,7 +109,7 @@ public class SpoolScheduler extends BaseScheduler {
 	 *
 	 * @return
 	 */
-	protected static IStruct processSpool() {
+	public static IStruct processSpool() {
 		IStruct			result	= Struct.of(
 		    MailKeys.messages, new Array(),
 		    MailKeys.processed, 0,
@@ -121,51 +120,54 @@ public class SpoolScheduler extends BaseScheduler {
 		ICacheProvider	bounced	= runtime.getCacheService().getCache( bounceCache );
 
 		cache.getKeysStream()
-		    .map( key -> cache.get( key ) )
-		    .forEach( opt -> {
-			    ICacheEntry entry = ( ICacheEntry ) opt.get();
-			    try {
-				    Email message;
-				    IStruct entryParams		= StructCaster.cast( entry.value().get() );
-				    IStruct entryAttributes	= entryParams.getAsStruct( Key.attributes );
-				    Array mailServers		= entryParams.getAsArray( MailKeys.mailServers );
-				    Boolean deleteAttachments = BooleanCaster.cast( entryAttributes.getOrDefault( MailKeys.remove, false ) );
-				    String mimeAttach		= entryAttributes.getAsString( MailKeys.mimeAttach );
+		    .forEach( key -> {
+			    var attempt = cache.get( key );
+			    if ( attempt.isPresent() ) {
+				    IStruct entryData = StructCaster.cast( attempt.get() );
+				    try {
+					    Email message;
+					    IStruct entryAttributes	= entryData.getAsStruct( Key.attributes );
+					    Array mailServers		= entryData.getAsArray( MailKeys.mailServers );
+					    Boolean deleteAttachments = BooleanCaster.cast( entryAttributes.getOrDefault( MailKeys.remove, false ) );
+					    String mimeAttach		= entryAttributes.getAsString( MailKeys.mimeAttach );
 
-				    // Deserialize the email from cached data
-				    IStruct messageData		= entryParams.getAsStruct( Key.message );
-				    message = MailUtil.emailFromSerializableStruct( messageData );
+					    // Deserialize the email from cached data
+					    IStruct messageData		= entryData.getAsStruct( Key.message );
+					    message = MailUtil.emailFromSerializableStruct( messageData );
 
-				    MailUtil.sendMessage( mailServers, entryAttributes, message );
-				    if ( deleteAttachments && mimeAttach != null && FileSystemUtil.exists( mimeAttach ) ) {
-					    FileSystemUtil.deleteFile( mimeAttach );
-				    }
-				    result.put( MailKeys.processed, result.getAsInteger( MailKeys.processed ) + 1 );
-				    if ( logEnabled ) {
-					    logger.atDebug().log( String.format(
-					        "Message [%s] successfully sent",
-					        entry.key().getName()
+					    MailUtil.sendMessage( mailServers, entryAttributes, message );
+					    if ( deleteAttachments && mimeAttach != null && FileSystemUtil.exists( mimeAttach ) ) {
+						    FileSystemUtil.deleteFile( mimeAttach );
+					    }
+					    result.put( MailKeys.processed, result.getAsInteger( MailKeys.processed ) + 1 );
+					    if ( logEnabled ) {
+						    logger.atDebug().log( String.format(
+						        "Message [%s] successfully sent",
+						        key
+						    ) );
+					    }
+				    } catch ( Exception e ) {
+					    result.put( MailKeys.failures, result.getAsInteger( MailKeys.failures ) + 1 );
+					    String exceptionMessage = String.format(
+					        "An exception occurred while attempting to send an email with the identifier [%s]: %s, StackTrace: %s",
+					        key,
+					        e.getMessage(),
+					        e.getStackTrace().toString()
+					    );
+					    result.getAsArray( MailKeys.messages )
+					        .push(
+					            exceptionMessage
+					        );
+					    entryData.put( Key.exception, exceptionMessage );
+					    bounced.set( key, entryData );
+					    logger.atError().log( String.format(
+					        "Failed to send spooled message [%s]: %s",
+					        key,
+					        e.getMessage()
 					    ) );
+				    } finally {
+					    cache.clear( key );
 				    }
-			    } catch ( Exception e ) {
-				    result.put( MailKeys.failures, result.getAsInteger( MailKeys.failures ) + 1 );
-				    result.getAsArray( MailKeys.messages )
-				        .push(
-				            String.format(
-				                "An exception occurred while attempting to send an email with the identifier [%s]: %s, StackTrace: %s",
-				                entry.key().getName(),
-				                e.getMessage(),
-				                e.getStackTrace().toString()
-				            )
-				        );
-				    bounced.set( entry.key().getName(), entry.value().get() );
-				    logger.atError().log( String.format(
-				        "Failed to send spooled message [%s]: %s",
-				        entry.key().getName(),
-				        e.getMessage()
-				    ) );
-			    } finally {
-				    cache.clear( entry.key().getName() );
 			    }
 		    } );
 
@@ -173,7 +175,7 @@ public class SpoolScheduler extends BaseScheduler {
 
 	}
 
-	protected static void onSpoolProcessed( ScheduledTask task, Optional outcome ) {
+	protected static void onSpoolProcessed( ScheduledTask task, Optional<?> outcome ) {
 		IStruct result = StructCaster.cast( outcome.get() );
 		if ( result != null && ( result.getAsInteger( MailKeys.processed ) > 0 || result.getAsInteger( MailKeys.failures ) > 0 ) ) {
 			logger.info( String.format(
