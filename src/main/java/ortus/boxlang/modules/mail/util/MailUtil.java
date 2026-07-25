@@ -22,7 +22,10 @@ import java.net.IDN;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.Security;
+import java.util.Objects;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.apache.commons.mail2.core.EmailException;
 import org.apache.commons.mail2.jakarta.Email;
@@ -60,13 +63,13 @@ import ortus.boxlang.runtime.util.FileSystemUtil;
 
 public class MailUtil {
 
-	public static final BoxRuntime			runtime			= BoxRuntime.getInstance();
+	public static final BoxRuntime			runtime				= BoxRuntime.getInstance();
 
-	static final Key						spoolCache		= MailKeys.mailUnsent;
+	static final Key						spoolCache			= MailKeys.mailUnsent;
 
-	static final BoxLangLogger				logger			= runtime.getLoggingService().getLogger( "Mail" );
+	static final BoxLangLogger				logger				= runtime.getLoggingService().getLogger( "Mail" );
 
-	static final IStruct					mimeMap			= Struct.of(
+	static final IStruct					mimeMap				= Struct.of(
 	    MailKeys.HTML, "text/html",
 	    MailKeys.text, "text/plain",
 	    MailKeys.plain, "text/plain"
@@ -75,12 +78,32 @@ public class MailUtil {
 	/**
 	 * Converter which ensures all unicode email address input is correctly encoded
 	 */
-	static final IDNEmailAddressConverter	IDNConverter	= new IDNEmailAddressConverter();
+	static final IDNEmailAddressConverter	IDNConverter		= new IDNEmailAddressConverter();
+
+	/**
+	 * Regex to detect parenthetical display name after the email address: addr (Name)
+	 */
+	static final Pattern					PAREN_AFTER			= Pattern.compile( "^(.+?)\\s*\\(([^)]+)\\)\\s*$" );
+
+	/**
+	 * Regex to detect parenthetical display name before the email address: (Name) addr
+	 */
+	static final Pattern					PAREN_BEFORE		= Pattern.compile( "^\\s*\\(([^)]+)\\)\\s*(.+)$" );
+
+	/**
+	 * Regex for global replacement of "addr (Name)" — no anchors for multi-address strings.
+	 */
+	static final Pattern					PAREN_AFTER_GLOBAL	= Pattern.compile( "([^\\s;,\\(\\)]+@[^\\s;,\\(\\)]+)\\s*\\(([^)]+)\\)" );
+
+	/**
+	 * Regex for global replacement of "(Name) addr" — no anchors for multi-address strings.
+	 */
+	static final Pattern					PAREN_BEFORE_GLOBAL	= Pattern.compile( "\\(([^)]+)\\)\\s*([^\\s;,\\(\\)]+@[^\\s;,\\(\\)]+)" );
 
 	/**
 	 * Add our mail cap entries to the default command map
 	 */
-	static final MailcapCommandMap			mailcap			= ( MailcapCommandMap ) CommandMap.getDefaultCommandMap();
+	static final MailcapCommandMap			mailcap				= ( MailcapCommandMap ) CommandMap.getDefaultCommandMap();
 	static {
 		mailcap
 		    .addMailcap( "application/pkcs7-signature;; x-java-content-handler=org.bouncycastle.mail.smime.handlers.pkcs7_signature" );
@@ -177,7 +200,7 @@ public class MailUtil {
 		}
 
 		try {
-			message.setFrom( IDNConverter.toASCII( from ) );
+			message.setFrom( IDNConverter.toASCII( normalizeEmailAddress( from ) ) );
 		} catch ( EmailException e ) {
 			throw new BoxRuntimeException( "An error occurred while attempting parse a sendable 'from' address.  The message recieved was: " + e.getMessage() );
 		}
@@ -192,6 +215,76 @@ public class MailUtil {
 	}
 
 	/**
+	 * Normalizes an email address string by converting parenthetical display-name
+	 * formats to standard RFC 5322 angle-bracket format. Also trims whitespace.
+	 *
+	 * Examples:
+	 * <ul>
+	 * <li>{@code user@domain.com (John Doe)} → {@code John Doe <user@domain.com>}</li>
+	 * <li>{@code (John Doe) user@domain.com} → {@code John Doe <user@domain.com>}</li>
+	 * <li>{@code user@domain.com} → {@code user@domain.com}</li>
+	 * <li>{@code null} or blank → {@code null}</li>
+	 * </ul>
+	 *
+	 * @param address the raw email address string, possibly null
+	 * 
+	 * @return the normalized address, or null if the input was null/blank
+	 */
+	public static String normalizeEmailAddress( String address ) {
+		if ( address == null || address.isBlank() ) {
+			return null;
+		}
+
+		String	trimmed			= address.trim();
+
+		// Check for "addr (Name)" format
+		Matcher	afterMatcher	= PAREN_AFTER.matcher( trimmed );
+		if ( afterMatcher.matches() ) {
+			String	emailPart	= afterMatcher.group( 1 ).trim();
+			String	namePart	= afterMatcher.group( 2 ).trim();
+			return namePart + " <" + emailPart + ">";
+		}
+
+		// Check for "(Name) addr" format
+		Matcher beforeMatcher = PAREN_BEFORE.matcher( trimmed );
+		if ( beforeMatcher.matches() ) {
+			String	namePart	= beforeMatcher.group( 1 ).trim();
+			String	emailPart	= beforeMatcher.group( 2 ).trim();
+			return namePart + " <" + emailPart + ">";
+		}
+
+		return trimmed;
+	}
+
+	/**
+	 * Normalizes a raw address list string by converting parenthetical display-name
+	 * formats to standard RFC 5322 angle-bracket format globally before splitting.
+	 * This must run BEFORE {@link ListUtil#asList} splitting to prevent spaces in
+	 * display names from being treated as address delimiters.
+	 *
+	 * Example:
+	 * {@code addr1@domain (Name One); addr2@domain (Name Two)} →
+	 * {@code Name One <addr1@domain>; Name Two <addr2@domain>}
+	 *
+	 * @param raw the raw address list string, possibly null
+	 * 
+	 * @return the normalized address list string, or null if input was null
+	 */
+	public static String normalizeRawAddressString( String raw ) {
+		if ( raw == null || raw.isBlank() ) {
+			return raw;
+		}
+
+		// Replace "addr (Name)" with "Name <addr>" globally
+		String result = PAREN_AFTER_GLOBAL.matcher( raw ).replaceAll( "$2 <$1>" );
+
+		// Replace "(Name) addr" with "Name <addr>" globally
+		result = PAREN_BEFORE_GLOBAL.matcher( result ).replaceAll( "$1 <$2>" );
+
+		return result;
+	}
+
+	/**
 	 * Sets the message recipients
 	 *
 	 * @param attributes
@@ -199,30 +292,38 @@ public class MailUtil {
 	 */
 	public static void setMessageRecipients( IStruct attributes, Email message ) {
 
-		String	to		= attributes.getAsString( Key.to );
-		String	bcc		= attributes.getAsString( MailKeys.bcc );
-		String	cc		= attributes.getAsString( MailKeys.cc );
-		String	replyTo	= attributes.getAsString( MailKeys.replyTo );
+		String	to		= normalizeRawAddressString( attributes.getAsString( Key.to ) );
+		String	bcc		= normalizeRawAddressString( attributes.getAsString( MailKeys.bcc ) );
+		String	cc		= normalizeRawAddressString( attributes.getAsString( MailKeys.cc ) );
+		String	replyTo	= normalizeRawAddressString( attributes.getAsString( MailKeys.replyTo ) );
 		String	failTo	= attributes.getAsString( MailKeys.failTo );
 
-		message.setBounceAddress( failTo != null ? IDNConverter.toASCII( failTo ) : IDNConverter.toASCII( attributes.getAsString( Key.from ) ) );
+		message.setBounceAddress(
+		    failTo != null ? IDNConverter.toASCII( normalizeEmailAddress( failTo ) )
+		        : IDNConverter.toASCII( normalizeEmailAddress( attributes.getAsString( Key.from ) ) ) );
 
-		ListUtil.asList( to, ";, ", false, false )
+		ListUtil.asList( to, ";,", false, false )
 		    .stream()
+		    .map( StringCaster::cast )
+		    .map( MailUtil::normalizeEmailAddress )
+		    .filter( Objects::nonNull )
 		    .forEach( address -> {
 			    try {
-				    message.addTo( IDNConverter.toASCII( StringCaster.cast( address ) ) );
+				    message.addTo( IDNConverter.toASCII( address ) );
 			    } catch ( EmailException e ) {
 				    throw new BoxRuntimeException(
 				        "An error occurred while attempting parse a sendable 'to' address.  The message recieved was: " + e.getMessage() );
 			    }
 		    } );
 		if ( cc != null ) {
-			ListUtil.asList( cc, ", ", false, false )
+			ListUtil.asList( cc, ",", false, false )
 			    .stream()
+			    .map( StringCaster::cast )
+			    .map( MailUtil::normalizeEmailAddress )
+			    .filter( Objects::nonNull )
 			    .forEach( address -> {
 				    try {
-					    message.addCc( IDNConverter.toASCII( StringCaster.cast( address ) ) );
+					    message.addCc( IDNConverter.toASCII( address ) );
 				    } catch ( EmailException e ) {
 					    throw new BoxRuntimeException(
 					        "An error occurred while attempting parse a sendable 'cc' address.  The message recieved was: " + e.getMessage() );
@@ -230,11 +331,14 @@ public class MailUtil {
 			    } );
 		}
 		if ( bcc != null ) {
-			ListUtil.asList( bcc, ", ", false, false )
+			ListUtil.asList( bcc, ",", false, false )
 			    .stream()
+			    .map( StringCaster::cast )
+			    .map( MailUtil::normalizeEmailAddress )
+			    .filter( Objects::nonNull )
 			    .forEach( address -> {
 				    try {
-					    message.addBcc( IDNConverter.toASCII( StringCaster.cast( address ) ) );
+					    message.addBcc( IDNConverter.toASCII( address ) );
 				    } catch ( EmailException e ) {
 					    throw new BoxRuntimeException(
 					        "An error occurred while attempting parse a sendable 'bcc' address.  The message recieved was: " + e.getMessage() );
@@ -243,11 +347,14 @@ public class MailUtil {
 		}
 
 		if ( replyTo != null ) {
-			ListUtil.asList( replyTo, ", ", false, false )
+			ListUtil.asList( replyTo, ",", false, false )
 			    .stream()
+			    .map( StringCaster::cast )
+			    .map( MailUtil::normalizeEmailAddress )
+			    .filter( Objects::nonNull )
 			    .forEach( address -> {
 				    try {
-					    message.addReplyTo( IDNConverter.toASCII( StringCaster.cast( address ) ) );
+					    message.addReplyTo( IDNConverter.toASCII( address ) );
 				    } catch ( EmailException e ) {
 					    throw new BoxRuntimeException(
 					        "An error occurred while attempting parse a sendable 'replyTo' address.  The message recieved was: " + e.getMessage() );

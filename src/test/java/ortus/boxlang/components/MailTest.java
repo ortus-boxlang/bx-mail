@@ -544,6 +544,78 @@ public class MailTest {
 		assertEquals( "jclausen@ortussolutions.com", message.getFromAddress().toString() );
 	}
 
+	@DisplayName( "It can send mail with a parenthetical display name in the from address" )
+	@Test
+	public void testMailWithDisplayName() {
+		// @formatter:off
+		instance.executeSource(
+		    """
+				bx:mail
+					from="app@ortussolutions.com (Test App)"
+					to="jclausen@ortussolutions.com"
+					subject="Display Name Test"
+					server="127.0.0.1"
+					port="25"
+					spoolEnable="false"
+					debug="true"
+					messageIdentifier="messageId"
+					messageVariable="messageVar"
+				{
+					writeOutput( "Hello from a display name!" );
+				}
+			""",
+		    context, BoxSourceType.BOXSCRIPT );
+		// @formatter:on
+
+		assertTrue( variables.get( messageId ) instanceof String );
+		assertTrue( variables.get( messageVar ) instanceof Email );
+		Email message = ( Email ) variables.get( messageVar );
+		assertEquals( "Hello from a display name!", StringCaster.cast( message.getContent() ).trim() );
+		assertEquals( "Display Name Test", StringCaster.cast( message.getSubject() ).trim() );
+		assertEquals( "Test App <app@ortussolutions.com>", message.getFromAddress().toString() );
+		assertEquals( "jclausen@ortussolutions.com", message.getToAddresses().get( 0 ).toString() );
+	}
+
+	@DisplayName( "It can send mail with parenthetical display names on from, to, and cc" )
+	@Test
+	public void testMailWithDisplayNameMultipleRecipients() {
+		// @formatter:off
+		instance.executeSource(
+		    """
+				bx:mail
+					from="myapp@ortussolutions.com (My Application)"
+					to="jclausen@ortussolutions.com (Jon Clausen)"
+					cc="support@ortussolutions.com (Support Team)"
+					subject="Display Name Multiple Recipients Test"
+					server="127.0.0.1"
+					port="25"
+					spoolEnable="false"
+					debug="true"
+					messageIdentifier="messageId"
+					messageVariable="messageVar"
+				{
+					writeOutput( "Hello with display names!" );
+				}
+			""",
+		    context, BoxSourceType.BOXSCRIPT );
+		// @formatter:on
+
+		assertTrue( variables.get( messageId ) instanceof String );
+		assertTrue( variables.get( messageVar ) instanceof Email );
+		Email message = ( Email ) variables.get( messageVar );
+		assertEquals( "Hello with display names!", StringCaster.cast( message.getContent() ).trim() );
+		assertEquals( "Display Name Multiple Recipients Test", StringCaster.cast( message.getSubject() ).trim() );
+		assertEquals( "My Application <myapp@ortussolutions.com>", message.getFromAddress().toString() );
+		assertEquals( "Jon Clausen <jclausen@ortussolutions.com>", message.getToAddresses().get( 0 ).toString() );
+		assertEquals( "Support Team <support@ortussolutions.com>", message.getCcAddresses().get( 0 ).toString() );
+
+		// Verify the email address part is correct, not the display name
+		assertEquals( "jclausen@ortussolutions.com", message.getToAddresses().get( 0 ).getAddress() );
+		assertEquals( "Jon Clausen", message.getToAddresses().get( 0 ).getPersonal() );
+		assertEquals( "support@ortussolutions.com", message.getCcAddresses().get( 0 ).getAddress() );
+		assertEquals( "Support Team", message.getCcAddresses().get( 0 ).getPersonal() );
+	}
+
 	private void generateTestCertificate() throws CertificateException, FileNotFoundException, IOException {
 		String					cert		= "-----BEGIN CERTIFICATE-----\n"
 		    + "MIIEQTCCAymgAwIBAgIBATANBgkqhkiG9w0BAQUFADCBkzEaMBgGA1UEAxMRTW9u\n"
