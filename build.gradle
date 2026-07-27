@@ -4,20 +4,22 @@ plugins {
 	// https://github.com/harbby/gradle-serviceloader
     id "com.github.harbby.gradle.serviceloader" version "1.1.9"
 	// For source code formatting
-	id "com.diffplug.spotless" version "8.1.0"
+	id "com.diffplug.spotless" version "8.8.0"
 	// For building shadow jars with jdk 17 ONLY
     //id 'com.github.johnrengelman.shadow' version '8.1.1'
     // For building shadow jars using JDK 21 +, they had to fork
     id "io.github.goooler.shadow" version "8.1.8"
     // Download task
-    id "de.undercouch.download" version "5.6.0"
+    id "de.undercouch.download" version "5.7.0"
 }
 
 /**
  * Project Properties
  */
-sourceCompatibility = jdkVersion
-targetCompatibility = jdkVersion
+java {
+    sourceCompatibility = jdkVersion
+    targetCompatibility = jdkVersion
+}
 ext {
 	buildID = System.getenv( 'BUILD_ID' ) ?: '0'
 	branch = System.getenv( 'BRANCH' ) ?: 'development'
@@ -41,7 +43,7 @@ dependencies {
 	implementation 'org.apache.commons:commons-text:1.15.0'
 
 	// Bouncy castle encrytpion library
-	implementation 'org.bouncycastle:bcjmail-jdk18on:1.84'
+	implementation 'org.bouncycastle:bcjmail-jdk18on:1.85'
 
 	// BoxLang Runtime
 	// Look for it in the local build directory
@@ -75,7 +77,7 @@ compileJava {
 	// Compiler Options
 	options.incremental = true
 	options.encoding = 'UTF-8'
-	options.debug()
+	options.debug = true
 }
 
 compileTestJava{

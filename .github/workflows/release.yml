@@ -24,7 +24,7 @@ on:
 env:
   MODULE_ID: ${{ github.event.repository.name }}
   JDK: 21
-  GRADLE: 8.7
+  GRADLE: 9.6.1
   BUILD_ID: ${{ github.run_number }}
   SNAPSHOT: ${{ inputs.snapshot || false }}
 
@@ -98,7 +98,7 @@ jobs:
           gradle build -x test --stacktrace --console=plain
 
       - name: Commit Changelog [unreleased] with latest version
-        uses: EndBug/add-and-commit@v9.1.4
+        uses: EndBug/add-and-commit@v10.0.0
         if: env.SNAPSHOT == 'false'
         with:
           author_name: Github Actions
@@ -116,7 +116,7 @@ jobs:
 
       - name: Upload Build Artifacts
         if: success()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: bx-mail-build-${{env.version}}-${{env.BUILD_ID}}
           path: |
@@ -152,7 +152,7 @@ jobs:
           cd $GITHUB_WORKSPACE
 
       - name: Create Github Release
-        uses: taiki-e/create-gh-release-action@v1.9.3
+        uses: taiki-e/create-gh-release-action@v1.10.0
         continue-on-error: true
         if: env.SNAPSHOT == 'false'
         id: create_release
@@ -199,7 +199,7 @@ jobs:
           gradle-version: ${{ env.GRADLE }}
 
       - name: Download build artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: bx-mail-build-${{env.version}}-${{env.BUILD_ID}}
           path: .tmp
@@ -214,7 +214,7 @@ jobs:
           git pull
 
       - name: Commit Version Bump
-        uses: EndBug/add-and-commit@v9.1.4
+        uses: EndBug/add-and-commit@v10.0.0
         with:
           author_name: Github Actions
           author_email: info@ortussolutions.com

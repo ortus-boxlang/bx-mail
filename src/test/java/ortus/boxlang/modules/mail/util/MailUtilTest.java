@@ -778,6 +778,106 @@ public class MailUtilTest {
 		attachment.delete();
 	}
 
+	// ========== normalizeEmailAddress tests ==========
+
+	@DisplayName( "normalizeEmailAddress: plain address passes through unchanged" )
+	@Test
+	public void testNormalizePlainAddress() {
+		assertEquals( "user@domain.com", MailUtil.normalizeEmailAddress( "user@domain.com" ) );
+	}
+
+	@DisplayName( "normalizeEmailAddress: parenthetical display name after address" )
+	@Test
+	public void testNormalizeParenAfter() {
+		assertEquals( "App Name <app@domain.com>",
+		    MailUtil.normalizeEmailAddress( "app@domain.com (App Name)" ) );
+	}
+
+	@DisplayName( "normalizeEmailAddress: parenthetical display name before address" )
+	@Test
+	public void testNormalizeParenBefore() {
+		assertEquals( "John Doe <user@domain.com>",
+		    MailUtil.normalizeEmailAddress( "(John Doe) user@domain.com" ) );
+	}
+
+	@DisplayName( "normalizeEmailAddress: trims whitespace" )
+	@Test
+	public void testNormalizeTrimsWhitespace() {
+		assertEquals( "user@domain.com",
+		    MailUtil.normalizeEmailAddress( "  user@domain.com  " ) );
+	}
+
+	@DisplayName( "normalizeEmailAddress: null input returns null" )
+	@Test
+	public void testNormalizeNull() {
+		assertEquals( null, MailUtil.normalizeEmailAddress( null ) );
+	}
+
+	@DisplayName( "normalizeEmailAddress: blank input returns null" )
+	@Test
+	public void testNormalizeBlank() {
+		assertEquals( null, MailUtil.normalizeEmailAddress( "   " ) );
+	}
+
+	@DisplayName( "normalizeEmailAddress: already-valid angle-bracket format passes through" )
+	@Test
+	public void testNormalizeAlreadyValidAngleBracket() {
+		assertEquals( "John Doe <user@domain.com>",
+		    MailUtil.normalizeEmailAddress( "John Doe <user@domain.com>" ) );
+	}
+
+	@DisplayName( "normalizeEmailAddress: parenthetical with extra spaces around parens" )
+	@Test
+	public void testNormalizeParenWithExtraSpaces() {
+		assertEquals( "App Name <app@domain.com>",
+		    MailUtil.normalizeEmailAddress( "app@domain.com  ( App Name )" ) );
+	}
+
+	@DisplayName( "normalizeEmailAddress: empty string returns null" )
+	@Test
+	public void testNormalizeEmptyString() {
+		assertEquals( null, MailUtil.normalizeEmailAddress( "" ) );
+	}
+
+	// ========== normalizeRawAddressString tests ==========
+
+	@DisplayName( "normalizeRawAddressString: converts parenthetical to angle brackets globally" )
+	@Test
+	public void testNormalizeRawAddressList() {
+		assertEquals(
+		    "Jon Clausen <jclausen@ortussolutions.com>; Support Team <support@ortussolutions.com>",
+		    MailUtil.normalizeRawAddressString(
+		        "jclausen@ortussolutions.com (Jon Clausen); support@ortussolutions.com (Support Team)" )
+		);
+	}
+
+	@DisplayName( "normalizeRawAddressString: handles comma-separated addresses" )
+	@Test
+	public void testNormalizeRawAddressListCommas() {
+		assertEquals(
+		    "Alice <alice@domain.com>, Bob <bob@domain.com>",
+		    MailUtil.normalizeRawAddressString( "alice@domain.com (Alice), bob@domain.com (Bob)" )
+		);
+	}
+
+	@DisplayName( "normalizeRawAddressString: plain addresses pass through" )
+	@Test
+	public void testNormalizeRawAddressListPlain() {
+		assertEquals( "a@b.com; c@d.com", MailUtil.normalizeRawAddressString( "a@b.com; c@d.com" ) );
+	}
+
+	@DisplayName( "normalizeRawAddressString: null returns null" )
+	@Test
+	public void testNormalizeRawAddressListNull() {
+		assertEquals( null, MailUtil.normalizeRawAddressString( null ) );
+	}
+
+	@DisplayName( "normalizeRawAddressString: blank returns blank" )
+	@Test
+	public void testNormalizeRawAddressListBlank() {
+		assertEquals( "   ", MailUtil.normalizeRawAddressString( "   " ) );
+	}
+
 	// Helper methods for advanced testing
 	private File createTestAttachment( String filename, String content ) throws IOException {
 		File	tempDir		= new File( System.getProperty( "java.io.tmpdir" ) );
