@@ -76,6 +76,7 @@ public class MailKeys {
 	public static final Key	SMTP					= Key.of( "SMTP" );
 	public static final Key	spoolEnable				= Key.of( "spoolEnable" );
 	public static final Key	spoolInterval			= Key.of( "spoolInterval" );
+	public static final Key	spoolStartDelayMinutes	= Key.of( "spoolStartDelayMinutes" );
 	public static final Key	spoolDirectory			= Key.of( "spoolDirectory" );
 	public static final Key	spoolTimeout			= Key.of( "spoolTimeout" );
 	public static final Key	success					= Key.of( "success" );

@@ -82,6 +82,10 @@ class {
 			spoolEnable : true,
 			// Spool interval, in minutes
 			spoolInterval : .50,
+			// Delay (minutes) before the internal spool drainer first runs, to gate a
+			// fresh container during rolling deploys so it doesn't drain a shared spool
+			// while the previous container is still up. Default 0 = no delay.
+			spoolStartDelayMinutes : 0,
 			connectionTimeout : nullValue(),
 			downloadUndeliveredAttachments: false,
 			signMesssage: false,
