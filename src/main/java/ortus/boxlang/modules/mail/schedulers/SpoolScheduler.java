@@ -94,9 +94,11 @@ public class SpoolScheduler extends BaseScheduler {
 		}
 
 		long spoolIntervalMillis = LongCaster.cast( DoubleCaster.cast( moduleSettings.get( MailKeys.spoolInterval ) ) * minuteToMilisMulitplier );
+		long spoolStartDelayMillis = LongCaster.cast( DoubleCaster.cast( moduleSettings.get( MailKeys.spoolStartDelayMinutes ) ) * minuteToMilisMulitplier );
 
 		task( "SpoolTask" )
 		    .call( SpoolScheduler::processSpool )
+		    .delay( spoolStartDelayMillis, TimeUnit.MILLISECONDS )
 		    .every( spoolIntervalMillis, TimeUnit.MILLISECONDS )
 		    .setNoOverlaps( true )
 		    .onFailure( SpoolScheduler::onSpoolFailure )
