@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.11] - 2026-08-20
+
 ## [1.4.10] - 2026-07-27
 
 ## [1.4.9] - 2026-04-24
@@ -51,7 +53,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - First iteration of this module
 
-[unreleased]: https://github.com/ortus-boxlang/bx-mail/compare/v1.4.10...HEAD
+[unreleased]: https://github.com/ortus-boxlang/bx-mail/compare/v1.4.11...HEAD
+[1.4.11]: https://github.com/ortus-boxlang/bx-mail/compare/v1.4.10...v1.4.11
 [1.4.10]: https://github.com/ortus-boxlang/bx-mail/compare/v1.4.9...v1.4.10
 [1.4.9]: https://github.com/ortus-boxlang/bx-mail/compare/v1.4.8...v1.4.9
 [1.4.8]: https://github.com/ortus-boxlang/bx-mail/compare/v1.4.7...v1.4.8
