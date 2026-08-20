@@ -8,7 +8,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.sql.Struct;
 
 import org.apache.commons.mail2.jakarta.MultiPartEmail;
 import org.apache.commons.mail2.jakarta.SimpleEmail;
@@ -22,7 +21,10 @@ import ortus.boxlang.BaseIntegrationTest;
 import ortus.boxlang.modules.mail.util.MailKeys;
 import ortus.boxlang.modules.mail.util.MailUtil;
 import ortus.boxlang.runtime.cache.providers.ICacheProvider;
+import ortus.boxlang.runtime.scopes.Key;
+import ortus.boxlang.runtime.types.Array;
 import ortus.boxlang.runtime.types.IStruct;
+import ortus.boxlang.runtime.types.Struct;
 
 /**
  * Integration tests for the SpoolScheduler class
