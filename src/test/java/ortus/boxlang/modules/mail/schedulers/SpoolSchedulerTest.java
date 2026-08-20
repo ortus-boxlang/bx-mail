@@ -1,6 +1,7 @@
 package ortus.boxlang.modules.mail.schedulers;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -549,5 +550,100 @@ public class SpoolSchedulerTest extends BaseIntegrationTest {
 
 		// Cache should be empty after processing (email was sent)
 		assertEquals( initialSize, spoolCache.getSize(), "Cache should be empty after processing high priority email" );
+	}
+
+	@Test
+	public void testUnreadableEntryMovedToBounce() throws Exception {
+		// A raw, non-deserializable .cache file in the spool directory simulates an
+		// entry that is enumerated on disk but cannot be read by the cache.
+		Path			spoolDir	= Path.of( moduleSettings.getAsString( MailKeys.spoolDirectory ) );
+		Path			bounceDir	= Path.of( moduleSettings.getAsString( MailKeys.bounceDirectory ) );
+		String			key			= "unreadable-entry";
+
+		ICacheProvider	spoolCache	= runtime.getCacheService().getCache( MailKeys.mailUnsent );
+		int				initialSize	= spoolCache.getSize();
+
+		Path			corruptFile	= spoolDir.resolve( key + ".cache" );
+		Files.write( corruptFile, "this is not a serialized cache entry".getBytes() );
+
+		IStruct result = SpoolScheduler.processSpool();
+
+		// The unreadable entry must be reported as a failure and moved out of the spool.
+		assertTrue( result.getAsInteger( MailKeys.failures ) >= 1, "Unreadable entry should count as a failure" );
+
+		// The raw file must have been moved into the bounce directory's unreadable subdir.
+		Path bouncedFile = bounceDir.resolve( "unreadable" ).resolve( key + ".cache" );
+		assertTrue( Files.exists( bouncedFile ), "Unreadable entry should be moved to the bounce directory" );
+		assertFalse( Files.exists( corruptFile ), "Unreadable entry should no longer be in the spool directory" );
+
+		// The spool must be back to its baseline size (nothing stranded).
+		assertEquals( initialSize, spoolCache.getSize(), "Spool cache should not retain the unreadable entry" );
+	}
+
+	@Test
+	public void testCorruptEntryDoesNotAbortDrain() throws Exception {
+		// A corrupt spool file must not prevent other, valid entries from draining.
+		Path		spoolDir	= Path.of( moduleSettings.getAsString( MailKeys.spoolDirectory ) );
+		Path		bounceDir	= Path.of( moduleSettings.getAsString( MailKeys.bounceDirectory ) );
+
+		// Spool one valid email.
+		SimpleEmail	email		= new SimpleEmail();
+		email.setFrom( "test@example.com" );
+		email.addTo( "recipient@example.com" );
+		email.setSubject( "Valid email next to corrupt entry" );
+		email.setMsg( "This email should still be processed" );
+
+		IStruct attributes = Struct.of(
+		    MailKeys.spoolEnable, true,
+		    MailKeys.spoolDirectory, spoolDir.toString(),
+		    MailKeys.bounceDirectory, bounceDir.toString()
+		);
+		MailUtil.spoolOrSend( email, attributes, context );
+
+		// Place a corrupt .cache file alongside the valid entry.
+		String	key			= "corrupt-entry";
+		Path	corruptFile	= spoolDir.resolve( key + ".cache" );
+		Files.write( corruptFile, "garbage bytes".getBytes() );
+
+		ICacheProvider	spoolCache	= runtime.getCacheService().getCache( MailKeys.mailUnsent );
+		int				initialSize	= spoolCache.getSize();
+		assertTrue( initialSize >= 2, "Spool should contain the valid email and the corrupt entry" );
+
+		IStruct result = SpoolScheduler.processSpool();
+
+		// The valid entry is sent (or bounced on send failure) and the corrupt entry is
+		// moved out - in both cases the spool drains to empty.
+		assertEquals( initialSize - 2, spoolCache.getSize(), "Spool cache should be empty after processing" );
+		assertTrue( result.getAsInteger( MailKeys.failures ) >= 1, "Corrupt entry should be counted as a failure" );
+		assertTrue( Files.exists( bounceDir.resolve( "unreadable" ).resolve( key + ".cache" ) ),
+		    "Corrupt entry should be moved to the bounce directory" );
+	}
+
+	@Test
+	public void testBackToBackSpoolDrainsCompletely() throws Exception {
+		// Regression: two emails spooled back-to-back must both be drained on a single pass.
+		ICacheProvider	spoolCache	= runtime.getCacheService().getCache( MailKeys.mailUnsent );
+		int				initialSize	= spoolCache.getSize();
+
+		IStruct			attributes	= Struct.of(
+		    MailKeys.spoolEnable, true,
+		    MailKeys.spoolDirectory, moduleSettings.getAsString( MailKeys.spoolDirectory ),
+		    MailKeys.bounceDirectory, moduleSettings.getAsString( MailKeys.bounceDirectory )
+		);
+
+		for ( int i = 0; i < 2; i++ ) {
+			SimpleEmail email = new SimpleEmail();
+			email.setFrom( "sender" + i + "@example.com" );
+			email.addTo( "recipient" + i + "@example.com" );
+			email.setSubject( "Back-to-back email " + i );
+			email.setMsg( "Back-to-back message " + i );
+			MailUtil.spoolOrSend( email, attributes, context );
+		}
+
+		assertEquals( initialSize + 2, spoolCache.getSize(), "Both emails should be spooled" );
+
+		SpoolScheduler.processSpool();
+
+		assertEquals( initialSize, spoolCache.getSize(), "Both back-to-back emails should be drained on a single pass" );
 	}
 }

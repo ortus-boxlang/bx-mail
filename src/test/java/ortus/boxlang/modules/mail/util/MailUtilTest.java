@@ -48,7 +48,7 @@ import ortus.boxlang.runtime.types.IStruct;
 import ortus.boxlang.runtime.types.Struct;
 
 /**
- * Unit tests for MailUtil serialization/deserialization functionality
+ * Unit tests for MailUtil serialization and deserialization functionality
  */
 public class MailUtilTest {
 

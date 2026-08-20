@@ -227,7 +227,7 @@ public class MailUtil {
 	 * </ul>
 	 *
 	 * @param address the raw email address string, possibly null
-	 * 
+	 *
 	 * @return the normalized address, or null if the input was null/blank
 	 */
 	public static String normalizeEmailAddress( String address ) {
@@ -267,7 +267,7 @@ public class MailUtil {
 	 * {@code Name One <addr1@domain>; Name Two <addr2@domain>}
 	 *
 	 * @param raw the raw address list string, possibly null
-	 * 
+	 *
 	 * @return the normalized address list string, or null if input was null
 	 */
 	public static String normalizeRawAddressString( String raw ) {
@@ -316,7 +316,7 @@ public class MailUtil {
 			    }
 		    } );
 		if ( cc != null ) {
-			ListUtil.asList( cc, ",", false, false )
+			ListUtil.asList( cc, ";,", false, false )
 			    .stream()
 			    .map( StringCaster::cast )
 			    .map( MailUtil::normalizeEmailAddress )
@@ -331,7 +331,7 @@ public class MailUtil {
 			    } );
 		}
 		if ( bcc != null ) {
-			ListUtil.asList( bcc, ",", false, false )
+			ListUtil.asList( bcc, ";,", false, false )
 			    .stream()
 			    .map( StringCaster::cast )
 			    .map( MailUtil::normalizeEmailAddress )
@@ -347,7 +347,7 @@ public class MailUtil {
 		}
 
 		if ( replyTo != null ) {
-			ListUtil.asList( replyTo, ",", false, false )
+			ListUtil.asList( replyTo, ";,", false, false )
 			    .stream()
 			    .map( StringCaster::cast )
 			    .map( MailUtil::normalizeEmailAddress )

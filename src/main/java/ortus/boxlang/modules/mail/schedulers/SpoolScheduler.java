@@ -17,8 +17,14 @@
  */
 package ortus.boxlang.modules.mail.schedulers;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 import org.apache.commons.mail2.jakarta.Email;
 
@@ -46,6 +52,18 @@ public class SpoolScheduler extends BaseScheduler {
 	static final Key					bounceCache				= MailKeys.mailBounced;
 
 	static final double					minuteToMilisMulitplier	= 60000d;
+
+	/**
+	 * The file extension used by the BoxLang {@code fileSystemStore} object store for
+	 * its on-disk cache files. Must be kept in sync with {@code FileSystemStore.FILE_EXTENSION}.
+	 */
+	static final String					cacheFileExtension		= ".cache";
+
+	/**
+	 * Subdirectory of the bounce directory where raw spool files that could not be
+	 * read are preserved for forensic inspection / manual replay.
+	 */
+	static final String					unreadableDirectory		= "unreadable";
 
 	private static final BoxRuntime		runtime					= BoxRuntime.getInstance();
 	private static final IStruct		moduleSettings			= runtime.getModuleService().getModuleSettings( MailKeys._MODULE_NAME );
@@ -93,10 +111,13 @@ public class SpoolScheduler extends BaseScheduler {
 			);
 		}
 
-		long spoolIntervalMillis = LongCaster.cast( DoubleCaster.cast( moduleSettings.get( MailKeys.spoolInterval ) ) * minuteToMilisMulitplier );
+		long	spoolIntervalMillis		= LongCaster.cast( DoubleCaster.cast( moduleSettings.get( MailKeys.spoolInterval ) ) * minuteToMilisMulitplier );
+		long	spoolStartDelayMillis	= LongCaster
+		    .cast( DoubleCaster.cast( moduleSettings.get( MailKeys.spoolStartDelayMinutes ) ) * minuteToMilisMulitplier );
 
 		task( "SpoolTask" )
 		    .call( SpoolScheduler::processSpool )
+		    .delay( spoolStartDelayMillis, TimeUnit.MILLISECONDS )
 		    .every( spoolIntervalMillis, TimeUnit.MILLISECONDS )
 		    .setNoOverlaps( true )
 		    .onFailure( SpoolScheduler::onSpoolFailure )
@@ -119,60 +140,128 @@ public class SpoolScheduler extends BaseScheduler {
 		ICacheProvider	cache	= runtime.getCacheService().getCache( spoolCache );
 		ICacheProvider	bounced	= runtime.getCacheService().getCache( bounceCache );
 
-		cache.getKeysStream()
-		    .forEach( key -> {
-			    var attempt = cache.get( key );
-			    if ( attempt.isPresent() ) {
-				    IStruct entryData = StructCaster.cast( attempt.get() );
-				    try {
-					    Email message;
-					    IStruct entryAttributes	= entryData.getAsStruct( Key.attributes );
-					    Array mailServers		= entryData.getAsArray( MailKeys.mailServers );
-					    Boolean deleteAttachments = BooleanCaster.cast( entryAttributes.getOrDefault( MailKeys.remove, false ) );
-					    String mimeAttach		= entryAttributes.getAsString( MailKeys.mimeAttach );
+		// Snapshot the keys before iterating so that moving/clearing files during this
+		// cycle does not race the underlying Files.walk enumeration stream.
+		List<String>	keys	= cache.getKeysStream().collect( Collectors.toList() );
 
-					    // Deserialize the email from cached data
-					    IStruct messageData		= entryData.getAsStruct( Key.message );
-					    message = MailUtil.emailFromSerializableStruct( messageData );
-
-					    MailUtil.sendMessage( mailServers, entryAttributes, message );
-					    if ( deleteAttachments && mimeAttach != null && FileSystemUtil.exists( mimeAttach ) ) {
-						    FileSystemUtil.deleteFile( mimeAttach );
-					    }
-					    result.put( MailKeys.processed, result.getAsInteger( MailKeys.processed ) + 1 );
-					    if ( logEnabled ) {
-						    logger.atDebug().log( String.format(
-						        "Message [%s] successfully sent",
-						        key
-						    ) );
-					    }
-				    } catch ( Exception e ) {
-					    result.put( MailKeys.failures, result.getAsInteger( MailKeys.failures ) + 1 );
-					    String exceptionMessage = String.format(
-					        "An exception occurred while attempting to send an email with the identifier [%s]: %s, StackTrace: %s",
-					        key,
-					        e.getMessage(),
-					        e.getStackTrace().toString()
-					    );
-					    result.getAsArray( MailKeys.messages )
-					        .push(
-					            exceptionMessage
-					        );
-					    entryData.put( Key.exception, exceptionMessage );
-					    bounced.set( key, entryData );
-					    logger.atError().log( String.format(
-					        "Failed to send spooled message [%s]: %s",
-					        key,
-					        e.getMessage()
-					    ) );
-				    } finally {
-					    cache.clear( key );
-				    }
-			    }
-		    } );
+		for ( String key : keys ) {
+			try {
+				var attempt = cache.get( key );
+				if ( attempt.isPresent() ) {
+					processEntry( key, attempt.get(), cache, bounced, result );
+				} else {
+					// The key was enumerated on disk but the cache could not read it.
+					// Preserve the raw file and report it instead of stranding it forever.
+					bounceUnreadableEntry( key, "entry present on disk but unreadable by the cache", cache, result );
+				}
+			} catch ( Exception e ) {
+				// A corrupt entry (or any read failure) must not abort the drain of the
+				// remaining entries. Preserve it and continue.
+				bounceUnreadableEntry( key, "deserialization failed: " + e.getMessage(), cache, result );
+			}
+		}
 
 		return result;
 
+	}
+
+	/**
+	 * Sends a spooled message and clears it from the spool (or bounces it on failure).
+	 *
+	 * @param key     the spool cache key
+	 * @param value   the deserialized spool entry data
+	 * @param cache   the spool cache provider
+	 * @param bounced the bounce cache provider
+	 * @param result  the processing result struct to update
+	 */
+	private static void processEntry( String key, Object value, ICacheProvider cache, ICacheProvider bounced, IStruct result ) {
+		IStruct entryData = StructCaster.cast( value );
+		try {
+			Email	message;
+			IStruct	entryAttributes		= entryData.getAsStruct( Key.attributes );
+			Array	mailServers			= entryData.getAsArray( MailKeys.mailServers );
+			Boolean	deleteAttachments	= BooleanCaster.cast( entryAttributes.getOrDefault( MailKeys.remove, false ) );
+			String	mimeAttach			= entryAttributes.getAsString( MailKeys.mimeAttach );
+
+			// Deserialize the email from cached data
+			IStruct	messageData			= entryData.getAsStruct( Key.message );
+			message = MailUtil.emailFromSerializableStruct( messageData );
+
+			MailUtil.sendMessage( mailServers, entryAttributes, message );
+			if ( deleteAttachments && mimeAttach != null && FileSystemUtil.exists( mimeAttach ) ) {
+				FileSystemUtil.deleteFile( mimeAttach );
+			}
+			result.put( MailKeys.processed, result.getAsInteger( MailKeys.processed ) + 1 );
+			if ( logEnabled ) {
+				logger.atDebug().log( String.format(
+				    "Message [%s] successfully sent",
+				    key
+				) );
+			}
+		} catch ( Exception e ) {
+			result.put( MailKeys.failures, result.getAsInteger( MailKeys.failures ) + 1 );
+			String exceptionMessage = String.format(
+			    "An exception occurred while attempting to send an email with the identifier [%s]: %s, StackTrace: %s",
+			    key,
+			    e.getMessage(),
+			    e.getStackTrace().toString()
+			);
+			result.getAsArray( MailKeys.messages )
+			    .push(
+			        exceptionMessage
+			    );
+			entryData.put( Key.exception, exceptionMessage );
+			bounced.set( key, entryData );
+			logger.atError().log( String.format(
+			    "Failed to send spooled message [%s]: %s",
+			    key,
+			    e.getMessage()
+			) );
+		} finally {
+			cache.clear( key );
+		}
+	}
+
+	/**
+	 * Preserves a raw spool cache file that could not be read by moving it into a
+	 * dedicated {@code unreadable} subdirectory of the bounce directory, and records
+	 * it as a failure. This keeps the bytes for forensic inspection / manual replay
+	 * while removing the key from the spool so it cannot strand on later cycles.
+	 *
+	 * @param key    the spool cache key (also the on-disk file name, without extension)
+	 * @param reason the reason the entry could not be processed
+	 * @param cache  the spool cache provider
+	 * @param result the processing result struct to update
+	 */
+	private static void bounceUnreadableEntry( String key, String reason, ICacheProvider cache, IStruct result ) {
+		result.put( MailKeys.failures, result.getAsInteger( MailKeys.failures ) + 1 );
+
+		String exceptionMessage = String.format(
+		    "An unreadable spool entry [%s] was moved to the bounce directory. Reason: %s",
+		    key,
+		    reason
+		);
+		result.getAsArray( MailKeys.messages ).push( exceptionMessage );
+
+		Path	source	= Path.of( moduleSettings.getAsString( MailKeys.spoolDirectory ), key + cacheFileExtension );
+		Path	target	= Path.of( moduleSettings.getAsString( MailKeys.bounceDirectory ), unreadableDirectory, key + cacheFileExtension );
+
+		try {
+			Files.createDirectories( target.getParent() );
+			Files.move( source, target, StandardCopyOption.REPLACE_EXISTING );
+			logger.atError().log( exceptionMessage );
+		} catch ( IOException e ) {
+			logger.atError().log( String.format(
+			    "Failed to move unreadable spool entry [%s] to the bounce directory. Reason: %s. Move error: %s",
+			    key,
+			    reason,
+			    e.getMessage()
+			) );
+		} finally {
+			// Remove the key from the spool cache regardless of the move result so it
+			// cannot be retried (and stranded) forever.
+			cache.clear( key );
+		}
 	}
 
 	protected static void onSpoolProcessed( ScheduledTask task, Optional<?> outcome ) {
