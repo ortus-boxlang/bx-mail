@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- [BLMODULES-286](https://ortussolutions.atlassian.net/browse/BLMODULES-286) - Change default mimetype to `text/plain` from `text/html`
+
 ## [1.4.11] - 2026-08-20
 
 ## [1.4.10] - 2026-07-27

@@ -185,7 +185,7 @@ public class MailUtil {
 		    .forEach( part -> message.addHeader( part.getAsString( Key._NAME ), part.getAsString( Key.value ) ) );
 
 		if ( messageType == null ) {
-			messageType = "text/html";
+			messageType = mimeMap.getAsString( MailKeys.text );
 		} else if ( mimeMap.containsKey( Key.of( messageType ) ) ) {
 			messageType = mimeMap.getAsString( Key.of( messageType ) );
 			attributes.put( Key.type, messageType );
