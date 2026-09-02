@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.12] - 2026-09-02
+
 - [BLMODULES-286](https://ortussolutions.atlassian.net/browse/BLMODULES-286) - Change default mimetype to `text/plain` from `text/html`
 
 ## [1.4.11] - 2026-08-20
@@ -55,7 +57,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - First iteration of this module
 
-[unreleased]: https://github.com/ortus-boxlang/bx-mail/compare/v1.4.11...HEAD
+[unreleased]: https://github.com/ortus-boxlang/bx-mail/compare/v1.4.12...HEAD
+[1.4.12]: https://github.com/ortus-boxlang/bx-mail/compare/v1.4.11...v1.4.12
 [1.4.11]: https://github.com/ortus-boxlang/bx-mail/compare/v1.4.10...v1.4.11
 [1.4.10]: https://github.com/ortus-boxlang/bx-mail/compare/v1.4.9...v1.4.10
 [1.4.9]: https://github.com/ortus-boxlang/bx-mail/compare/v1.4.8...v1.4.9
