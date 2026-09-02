@@ -149,6 +149,7 @@ public class MailTest {
 		assertTrue( variables.get( messageVar ) instanceof Email );
 		Email message = ( Email ) variables.get( messageVar );
 		assertEquals( "Hello mail!", StringCaster.cast( message.getContent() ).trim() );
+		assertTrue( message.getContentType().startsWith( "text/plain" ) );
 		assertEquals( "Mail Test", StringCaster.cast( message.getSubject() ).trim() );
 		assertEquals( "jclausen@ortussolutions.com", message.getToAddresses().get( 0 ).toString() );
 		assertEquals( "jclausen@ortussolutions.com", message.getFromAddress().toString() );
