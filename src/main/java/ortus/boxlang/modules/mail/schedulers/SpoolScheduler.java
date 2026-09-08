@@ -154,7 +154,7 @@ public class SpoolScheduler extends BaseScheduler {
 					// The key was present in the enumeration but not in the cache. This can
 					// happen if another process cleared it between the enumeration and the
 					// get() call. Log it and continue.
-					logger.atWarn().log( String.format(
+					logger.warn( String.format(
 					    "Spool entry [%s] was enumerated but could not be retrieved from the cache. It may have been cleared by another process.",
 					    key
 					) );
@@ -198,7 +198,7 @@ public class SpoolScheduler extends BaseScheduler {
 			}
 			result.put( MailKeys.processed, result.getAsInteger( MailKeys.processed ) + 1 );
 			if ( logEnabled ) {
-				logger.atDebug().log( String.format(
+				logger.debug( String.format(
 				    "Message [%s] successfully sent",
 				    key
 				) );
@@ -218,12 +218,13 @@ public class SpoolScheduler extends BaseScheduler {
 			    );
 			entryData.put( Key.exception, exceptionMessage );
 			bounced.set( key, entryData );
-			logger.atError().log( String.format(
+			logger.error( String.format(
 			    "Failed to send spooled message [%s]: %s",
 			    key,
 			    e.getMessage()
 			) );
-			logger.atDebug().log( exceptionMessage );
+
+			logger.debug( exceptionMessage );
 		} finally {
 			cache.clear( key );
 		}
@@ -256,9 +257,9 @@ public class SpoolScheduler extends BaseScheduler {
 		try {
 			Files.createDirectories( target.getParent() );
 			Files.move( source, target, StandardCopyOption.REPLACE_EXISTING );
-			logger.atError().log( exceptionMessage );
+			logger.error( exceptionMessage );
 		} catch ( IOException e ) {
-			logger.atError().log( String.format(
+			logger.error( String.format(
 			    "Failed to move unreadable spool entry [%s] to the bounce directory. Reason: %s. Move error: %s",
 			    key,
 			    reason,
