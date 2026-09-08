@@ -1049,10 +1049,11 @@ public class MailUtil {
 			String sanitizedMailServersString = mailServers.stream()
 			    .map( StructCaster::cast )
 			    .map( ( server ) -> {
-				    if ( server.containsKey( Key.password ) ) {
-					    server.put( Key.password, "****" );
+				    IStruct sanitizedServer = Struct.of( server );
+				    if ( sanitizedServer.containsKey( Key.password ) ) {
+					    sanitizedServer.put( Key.password, "****" );
 				    }
-				    return server;
+				    return sanitizedServer;
 			    } )
 			    .collect( BLCollector.toArray() )
 			    .asString();
