@@ -1049,7 +1049,7 @@ public class MailUtil {
 			String sanitizedMailServersString = mailServers.stream()
 			    .map( StructCaster::cast )
 			    .map( ( server ) -> {
-				    IStruct sanitizedServer = Struct.of( server );
+				    IStruct sanitizedServer = new Struct( IStruct.TYPES.DEFAULT, server );
 				    if ( sanitizedServer.containsKey( Key.password ) ) {
 					    sanitizedServer.put( Key.password, "****" );
 				    }
