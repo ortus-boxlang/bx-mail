@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -150,9 +151,13 @@ public class SpoolScheduler extends BaseScheduler {
 				if ( attempt.isPresent() ) {
 					processEntry( key, attempt.get(), cache, bounced, result );
 				} else {
-					// The key was enumerated on disk but the cache could not read it.
-					// Preserve the raw file and report it instead of stranding it forever.
-					bounceUnreadableEntry( key, "entry present on disk but unreadable by the cache", cache, result );
+					// The key was present in the enumeration but not in the cache. This can
+					// happen if another process cleared it between the enumeration and the
+					// get() call. Log it and continue.
+					logger.warn( String.format(
+					    "Spool entry [%s] was enumerated but could not be retrieved from the cache. It may have been cleared by another process.",
+					    key
+					) );
 				}
 			} catch ( Exception e ) {
 				// A corrupt entry (or any read failure) must not abort the drain of the
@@ -193,7 +198,7 @@ public class SpoolScheduler extends BaseScheduler {
 			}
 			result.put( MailKeys.processed, result.getAsInteger( MailKeys.processed ) + 1 );
 			if ( logEnabled ) {
-				logger.atDebug().log( String.format(
+				logger.debug( String.format(
 				    "Message [%s] successfully sent",
 				    key
 				) );
@@ -204,19 +209,22 @@ public class SpoolScheduler extends BaseScheduler {
 			    "An exception occurred while attempting to send an email with the identifier [%s]: %s, StackTrace: %s",
 			    key,
 			    e.getMessage(),
-			    e.getStackTrace().toString()
+			    Arrays.toString( e.getStackTrace() )
 			);
+
 			result.getAsArray( MailKeys.messages )
 			    .push(
 			        exceptionMessage
 			    );
 			entryData.put( Key.exception, exceptionMessage );
 			bounced.set( key, entryData );
-			logger.atError().log( String.format(
+			logger.error( String.format(
 			    "Failed to send spooled message [%s]: %s",
 			    key,
 			    e.getMessage()
 			) );
+
+			logger.debug( exceptionMessage );
 		} finally {
 			cache.clear( key );
 		}
@@ -249,9 +257,9 @@ public class SpoolScheduler extends BaseScheduler {
 		try {
 			Files.createDirectories( target.getParent() );
 			Files.move( source, target, StandardCopyOption.REPLACE_EXISTING );
-			logger.atError().log( exceptionMessage );
+			logger.error( exceptionMessage );
 		} catch ( IOException e ) {
-			logger.atError().log( String.format(
+			logger.error( String.format(
 			    "Failed to move unreadable spool entry [%s] to the bounce directory. Reason: %s. Move error: %s",
 			    key,
 			    reason,
@@ -317,7 +325,7 @@ public class SpoolScheduler extends BaseScheduler {
 	 */
 	@Override
 	public void onAnyTaskSuccess( ScheduledTask task, Optional<?> result ) {
-		logger.trace( "Mail Spool scheduled task " + task.getName() + " successfully completed." );
+		logger.debug( "Mail Spool scheduled task " + task.getName() + " successfully completed." );
 	}
 
 }

@@ -459,7 +459,7 @@ public class MailUtil {
 					        attributes.getAsString( Key.charset ),
 					        param
 					    );
-					    if ( attributes.getAsBoolean( MailKeys.remove ) ) {
+					    if ( BooleanCaster.cast( attributes.getOrDefault( MailKeys.remove, false ) ) ) {
 						    FileSystemUtil.deleteFile( param.getAsString( Key.file ) );
 					    }
 				    }
@@ -1049,10 +1049,11 @@ public class MailUtil {
 			String sanitizedMailServersString = mailServers.stream()
 			    .map( StructCaster::cast )
 			    .map( ( server ) -> {
-				    if ( server.containsKey( Key.password ) ) {
-					    server.put( Key.password, "****" );
+				    IStruct sanitizedServer = new Struct( IStruct.TYPES.DEFAULT, server );
+				    if ( sanitizedServer.containsKey( Key.password ) ) {
+					    sanitizedServer.put( Key.password, "****" );
 				    }
-				    return server;
+				    return sanitizedServer;
 			    } )
 			    .collect( BLCollector.toArray() )
 			    .asString();
@@ -1093,7 +1094,7 @@ public class MailUtil {
 					throw new EmailException( "All configured mail servers failed to send the message. Last error: " + ee.getMessage(), ee );
 				}
 			}
-			if ( attributes.getAsBoolean( MailKeys.remove ) && attributes.getAsString( MailKeys.mimeAttach ) != null ) {
+			if ( BooleanCaster.cast( attributes.getOrDefault( MailKeys.remove, false ) ) && attributes.getAsString( MailKeys.mimeAttach ) != null ) {
 				FileSystemUtil.deleteFile( attributes.getAsString( MailKeys.mimeAttach ) );
 			}
 			return messageId;
