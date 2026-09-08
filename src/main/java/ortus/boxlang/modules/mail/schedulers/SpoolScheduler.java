@@ -150,9 +150,13 @@ public class SpoolScheduler extends BaseScheduler {
 				if ( attempt.isPresent() ) {
 					processEntry( key, attempt.get(), cache, bounced, result );
 				} else {
-					// The key was enumerated on disk but the cache could not read it.
-					// Preserve the raw file and report it instead of stranding it forever.
-					bounceUnreadableEntry( key, "entry present on disk but unreadable by the cache", cache, result );
+					// The key was present in the enumeration but not in the cache. This can
+					// happen if another process cleared it between the enumeration and the
+					// get() call. Log it and continue.
+					logger.atWarn().log( String.format(
+					    "Spool entry [%s] was enumerated but could not be retrieved from the cache. It may have been cleared by another process.",
+					    key
+					) );
 				}
 			} catch ( Exception e ) {
 				// A corrupt entry (or any read failure) must not abort the drain of the
@@ -317,7 +321,7 @@ public class SpoolScheduler extends BaseScheduler {
 	 */
 	@Override
 	public void onAnyTaskSuccess( ScheduledTask task, Optional<?> result ) {
-		logger.trace( "Mail Spool scheduled task " + task.getName() + " successfully completed." );
+		logger.debug( "Mail Spool scheduled task " + task.getName() + " successfully completed." );
 	}
 
 }
