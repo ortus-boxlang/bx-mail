@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -208,8 +209,9 @@ public class SpoolScheduler extends BaseScheduler {
 			    "An exception occurred while attempting to send an email with the identifier [%s]: %s, StackTrace: %s",
 			    key,
 			    e.getMessage(),
-			    e.getStackTrace().toString()
+			    Arrays.toString( e.getStackTrace() )
 			);
+
 			result.getAsArray( MailKeys.messages )
 			    .push(
 			        exceptionMessage
@@ -221,6 +223,7 @@ public class SpoolScheduler extends BaseScheduler {
 			    key,
 			    e.getMessage()
 			) );
+			logger.atDebug().log( exceptionMessage );
 		} finally {
 			cache.clear( key );
 		}

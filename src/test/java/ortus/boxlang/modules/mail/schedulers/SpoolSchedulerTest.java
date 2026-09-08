@@ -219,10 +219,12 @@ public class SpoolSchedulerTest extends BaseIntegrationTest {
 	@Test
 	public void testMultipleEmailsSpooling() throws Exception {
 		ICacheProvider	spoolCache	= runtime.getCacheService().getCache( MailKeys.mailUnsent );
+		ICacheProvider	bounceCache	= runtime.getCacheService().getCache( MailKeys.mailBounced );
 		int				initialSize	= spoolCache.getSize();
+		int				iterations	= 10;
 
 		// Create and spool multiple emails
-		for ( int i = 0; i < 3; i++ ) {
+		for ( int i = 0; i < iterations; i++ ) {
 			SimpleEmail email = new SimpleEmail();
 			email.setFrom( "test" + i + "@example.com" );
 			email.addTo( "recipient" + i + "@example.com" );
@@ -242,7 +244,27 @@ public class SpoolSchedulerTest extends BaseIntegrationTest {
 		}
 
 		// Verify all emails were spooled
-		assertEquals( initialSize + 3, spoolCache.getSize(), "All 3 emails should be added to spool cache" );
+		assertEquals( initialSize + iterations, spoolCache.getSize(), "All " + iterations + " emails should be added to spool cache" );
+
+		// Process the spool queue
+		SpoolScheduler.processSpool();
+
+		assertEquals( initialSize, spoolCache.getSize(), "All " + iterations + " emails should be removed from spool cache after processing" );
+		assertEquals( 0, bounceCache.getSize(), "Bounce cache should be empty after processing spool" );
+
+		// Verify the spool processing result
+		// assertNotNull( result, "Processing result should not be null" );
+		// Object processedObj = result.get( MailKeys.processed );
+		// Object failuresObj = result.get( MailKeys.failures );
+		// Object messagesObj = result.get( MailKeys.messages );
+
+		// int processed = processedObj instanceof Integer ? ( Integer ) processedObj : -1;
+		// int failures = failuresObj instanceof Integer ? ( Integer ) failuresObj : -1;
+		// int messageCount = messagesObj instanceof Array ? ( ( Array ) messagesObj ).size() : -1;
+
+		// assertEquals( 3, processed, "Should process 3 emails from spool queue" );
+		// assertEquals( 0, failures, "Should have 0 failures when processing spool queue" );
+		// assertEquals( 3, messageCount, "Should have 3 messages for processed spool queue" );
 	}
 
 	@Test

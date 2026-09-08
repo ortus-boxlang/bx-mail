@@ -459,7 +459,7 @@ public class MailUtil {
 					        attributes.getAsString( Key.charset ),
 					        param
 					    );
-					    if ( attributes.getAsBoolean( MailKeys.remove ) ) {
+					    if ( BooleanCaster.cast( attributes.getOrDefault( MailKeys.remove, false ) ) ) {
 						    FileSystemUtil.deleteFile( param.getAsString( Key.file ) );
 					    }
 				    }
@@ -1093,7 +1093,7 @@ public class MailUtil {
 					throw new EmailException( "All configured mail servers failed to send the message. Last error: " + ee.getMessage(), ee );
 				}
 			}
-			if ( attributes.getAsBoolean( MailKeys.remove ) && attributes.getAsString( MailKeys.mimeAttach ) != null ) {
+			if ( BooleanCaster.cast( attributes.getOrDefault( MailKeys.remove, false ) ) && attributes.getAsString( MailKeys.mimeAttach ) != null ) {
 				FileSystemUtil.deleteFile( attributes.getAsString( MailKeys.mimeAttach ) );
 			}
 			return messageId;
