@@ -285,6 +285,7 @@ public class SpoolScheduler extends BaseScheduler {
 
 	/**
 	 * Called whenever the spool task fails
+	 * 
 	 * @param task
 	 * @param exception
 	 */
