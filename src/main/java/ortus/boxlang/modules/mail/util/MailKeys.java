@@ -99,8 +99,17 @@ public class MailKeys {
 	public static final Key	replyToAddresses		= Key.of( "replyToAddresses" );
 	public static final Key	emailBody				= Key.of( "emailBody" );
 	public static final Key	emailBodyContentType	= Key.of( "emailBodyContentType" );
+	public static final Key	emailBodySubtype		= Key.of( "emailBodySubtype" );
 	public static final Key	mailSessionProperties	= Key.of( "mailSessionProperties" );
 	public static final Key	headers					= Key.of( "headers" );
+
+	// MIME body part serialization keys
+	public static final Key	partType				= Key.of( "partType" );
+	public static final Key	partContentType			= Key.of( "partContentType" );
+	public static final Key	partContent				= Key.of( "partContent" );
+	public static final Key	partSubtype				= Key.of( "partSubtype" );
+	public static final Key	partEncoding			= Key.of( "partEncoding" );
+	public static final Key	partHeaders				= Key.of( "partHeaders" );
 
 	// Attachment-related keys
 	public static final Key	attachments				= Key.of( "attachments" );

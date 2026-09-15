@@ -17,14 +17,17 @@
  */
 package ortus.boxlang.modules.mail.util;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -42,10 +45,13 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import jakarta.mail.Session;
+import jakarta.mail.internet.MimeMultipart;
 import ortus.boxlang.runtime.BoxRuntime;
 import ortus.boxlang.runtime.scopes.Key;
+import ortus.boxlang.runtime.types.Array;
 import ortus.boxlang.runtime.types.IStruct;
 import ortus.boxlang.runtime.types.Struct;
+import ortus.boxlang.runtime.types.exceptions.BoxRuntimeException;
 
 /**
  * Unit tests for MailUtil serialization and deserialization functionality
@@ -876,6 +882,68 @@ public class MailUtilTest {
 	@Test
 	public void testNormalizeRawAddressListBlank() {
 		assertEquals( "   ", MailUtil.normalizeRawAddressString( "   " ) );
+	}
+
+	@DisplayName( "It round-trips multipart content (text, html, and attachment)" )
+	@Test
+	public void testMultiPartEmailContentRoundTrip() throws Exception {
+		byte[]	attachmentBytes	= "This is binary attachment content".getBytes( StandardCharsets.UTF_8 );
+		Path	tempFile		= Files.createTempFile( "bx-mail-attachment-", ".bin" );
+		Files.write( tempFile, attachmentBytes );
+		try {
+			MultiPartEmail originalEmail = new MultiPartEmail();
+			originalEmail.setFrom( "sender@example.com" );
+			originalEmail.addTo( "recipient@example.com" );
+			originalEmail.setSubject( "Content Round Trip" );
+			originalEmail.setMsg( "Plain text body" );
+			originalEmail.addPart( "<h1>HTML body</h1>", "text/html" );
+
+			EmailAttachment attachment = new EmailAttachment();
+			attachment.setPath( tempFile.toAbsolutePath().toString() );
+			attachment.setDisposition( EmailAttachment.ATTACHMENT );
+			attachment.setName( "attachment.bin" );
+			originalEmail.attach( attachment );
+
+			IStruct	attributes		= Struct.of( Key.charset, "UTF-8" );
+			IStruct	serialized		= MailUtil.emailToSerializableStruct( originalEmail, attributes );
+
+			assertEquals( "multipart", serialized.getAsString( MailKeys.emailType ) );
+			assertTrue( serialized.get( MailKeys.emailBody ) instanceof Array );
+
+			Email deserialized = MailUtil.emailFromSerializableStruct( serialized );
+			assertTrue( deserialized instanceof MultiPartEmail );
+
+			MimeMultipart body = ( ( MultiPartEmail ) deserialized ).getEmailBody();
+			assertNotNull( body );
+			assertEquals( 3, body.getCount() );
+
+			assertEquals( "Plain text body", body.getBodyPart( 0 ).getContent().toString().trim() );
+			assertEquals( "<h1>HTML body</h1>", body.getBodyPart( 1 ).getContent().toString().trim() );
+
+			jakarta.mail.BodyPart attachmentPart = body.getBodyPart( 2 );
+			assertEquals( "attachment.bin", attachmentPart.getFileName() );
+			assertEquals( jakarta.mail.Part.ATTACHMENT, attachmentPart.getDisposition() );
+			try ( InputStream in = attachmentPart.getInputStream() ) {
+				assertArrayEquals( attachmentBytes, in.readAllBytes() );
+			}
+		} finally {
+			Files.deleteIfExists( tempFile );
+		}
+	}
+
+	@DisplayName( "It throws for legacy spooled multipart entries with discarded content" )
+	@Test
+	public void testLegacyMultipartEntryThrows() {
+		IStruct legacyMessage = new Struct();
+		legacyMessage.put( MailKeys.emailType, "multipart" );
+		legacyMessage.put( MailKeys.subject, "Legacy Spooled Email" );
+		legacyMessage.put( MailKeys.emailBody, "multipart content" );
+		legacyMessage.put( MailKeys.emailBodyContentType, "multipart/mixed" );
+		legacyMessage.put( MailKeys.fromAddress, Struct.of( Key.email, "sender@example.com", Key._NAME, "Sender" ) );
+		legacyMessage.put( MailKeys.toAddresses, Array.of( Struct.of( Key.email, "recipient@example.com", Key._NAME, "Recipient" ) ) );
+		legacyMessage.put( MailKeys.headers, new Struct() );
+
+		assertThrows( BoxRuntimeException.class, () -> MailUtil.emailFromSerializableStruct( legacyMessage ) );
 	}
 
 	// Helper methods for advanced testing

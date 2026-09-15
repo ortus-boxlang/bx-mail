@@ -5,10 +5,24 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Properties;
+import java.util.concurrent.CopyOnWriteArrayList;
 
+import org.apache.commons.mail2.jakarta.EmailAttachment;
 import org.apache.commons.mail2.jakarta.MultiPartEmail;
 import org.apache.commons.mail2.jakarta.SimpleEmail;
 import org.junit.jupiter.api.AfterAll;
@@ -17,6 +31,11 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import jakarta.mail.BodyPart;
+import jakarta.mail.Multipart;
+import jakarta.mail.Session;
+import jakarta.mail.internet.MimeMessage;
+import jakarta.mail.internet.MimeMultipart;
 import ortus.boxlang.BaseIntegrationTest;
 import ortus.boxlang.modules.mail.util.MailKeys;
 import ortus.boxlang.modules.mail.util.MailUtil;
@@ -667,5 +686,199 @@ public class SpoolSchedulerTest extends BaseIntegrationTest {
 		SpoolScheduler.processSpool();
 
 		assertEquals( initialSize, spoolCache.getSize(), "Both back-to-back emails should be drained on a single pass" );
+	}
+
+	@Test
+	public void testProcessMultiPartEmailContentPreserved() throws Exception {
+		try ( MockSmtpServer server = new MockSmtpServer() ) {
+			// Build a multipart email with text, html, and a binary attachment
+			MultiPartEmail email = new MultiPartEmail();
+			email.setFrom( "sender@example.com" );
+			email.addTo( "recipient@example.com" );
+			email.setSubject( "Multipart Content Test" );
+			email.setMsg( "Plain text body" );
+			email.addPart( "<h1>HTML body</h1>", "text/html" );
+
+			Path	attachmentFile	= staticTempDir.resolve( "spool-attachment.bin" );
+			Files.write( attachmentFile, "attachment bytes".getBytes( StandardCharsets.UTF_8 ) );
+			EmailAttachment attachment = new EmailAttachment();
+			attachment.setPath( attachmentFile.toString() );
+			attachment.setDisposition( EmailAttachment.ATTACHMENT );
+			attachment.setName( "spool-attachment.bin" );
+			email.attach( attachment );
+
+			IStruct attributes = Struct.of(
+			    MailKeys.spoolEnable, true,
+			    Key.from, "sender@example.com",
+			    Key.to, "recipient@example.com",
+			    MailKeys.subject, "Multipart Content Test",
+			    Key.server, "127.0.0.1",
+			    Key.port, server.getPort()
+			);
+
+			MailUtil.spoolOrSend( email, attributes, context );
+
+			SpoolScheduler.processSpool();
+
+			assertEquals( 1, server.getMessages().size(), "Mock SMTP server should receive exactly one message" );
+
+			Session		session	= Session.getInstance( new Properties() );
+			MimeMessage	sent	= new MimeMessage( session, new ByteArrayInputStream( server.getMessages().get( 0 ) ) );
+			Object		content	= sent.getContent();
+			assertTrue( content instanceof MimeMultipart, "Sent message should be multipart" );
+
+			List<String>	textParts		= new ArrayList<>();
+			List<String>	attachmentNames	= new ArrayList<>();
+			collectParts( ( MimeMultipart ) content, textParts, attachmentNames );
+
+			assertTrue( textParts.stream().anyMatch( s -> s.contains( "Plain text body" ) ), "text part should survive spooling" );
+			assertTrue( textParts.stream().anyMatch( s -> s.contains( "HTML body" ) ), "html part should survive spooling" );
+			assertTrue( attachmentNames.contains( "spool-attachment.bin" ), "attachment should survive spooling" );
+		}
+	}
+
+	@Test
+	public void testLegacySpooledEntryIsBounced() throws Exception {
+		// Simulate an entry spooled by the broken version: emailBody is the sentinel string.
+		IStruct legacyMessage = new Struct();
+		legacyMessage.put( MailKeys.emailType, "multipart" );
+		legacyMessage.put( MailKeys.subject, "Legacy Spooled Email" );
+		legacyMessage.put( MailKeys.emailBody, "multipart content" );
+		legacyMessage.put( MailKeys.emailBodyContentType, "multipart/mixed" );
+		legacyMessage.put( MailKeys.fromAddress, Struct.of( Key.email, "sender@example.com", Key._NAME, "Sender" ) );
+		legacyMessage.put( MailKeys.toAddresses, Array.of( Struct.of( Key.email, "recipient@example.com", Key._NAME, "Recipient" ) ) );
+		legacyMessage.put( MailKeys.headers, new Struct() );
+
+		IStruct attributes = Struct.of(
+		    Key.from, "sender@example.com",
+		    Key.to, "recipient@example.com",
+		    Key.server, "127.0.0.1",
+		    Key.port, 25
+		);
+
+		IStruct entryData = Struct.of(
+		    Key.message, legacyMessage,
+		    Key.attributes, attributes,
+		    MailKeys.mailServers, Array.of( Struct.of( Key.server, "127.0.0.1", Key.port, 25 ) )
+		);
+
+		ICacheProvider	spoolCache		= runtime.getCacheService().getCache( MailKeys.mailUnsent );
+		ICacheProvider	bounceCache		= runtime.getCacheService().getCache( MailKeys.mailBounced );
+		spoolCache.clearAll();
+		bounceCache.clearAll();
+		int				initialBounce	= bounceCache.getSize();
+
+		spoolCache.set( "legacy-entry", entryData );
+
+		IStruct result = SpoolScheduler.processSpool();
+
+		assertTrue( result.getAsInteger( MailKeys.failures ) >= 1, "Legacy entry should be counted as a failure" );
+		assertEquals( initialBounce + 1, bounceCache.getSize(), "Legacy entry should be moved to the bounce cache" );
+	}
+
+	private static void collectParts( Multipart multipart, List<String> textParts, List<String> attachmentNames ) throws Exception {
+		for ( int i = 0; i < multipart.getCount(); i++ ) {
+			BodyPart	part		= multipart.getBodyPart( i );
+
+			// A part with a filename is an attachment, regardless of its content type.
+			String		fileName	= part.getFileName();
+			if ( fileName != null ) {
+				attachmentNames.add( fileName );
+			}
+
+			Object		content		= part.getContent();
+			if ( content instanceof Multipart nested ) {
+				collectParts( nested, textParts, attachmentNames );
+			} else if ( content instanceof String text ) {
+				textParts.add( text );
+			}
+		}
+	}
+
+	/**
+	 * Minimal in-process SMTP server used to capture the raw bytes of a sent message
+	 * so tests can assert on the actual wire content without external dependencies.
+	 */
+	private static class MockSmtpServer implements AutoCloseable {
+
+		private final ServerSocket		serverSocket;
+		private final List<byte[]>		messages	= new CopyOnWriteArrayList<>();
+		private final Thread			thread;
+
+		MockSmtpServer() throws IOException {
+			this.serverSocket	= new ServerSocket( 0 );
+			this.thread			= new Thread( () -> {
+				while ( !serverSocket.isClosed() ) {
+					try ( Socket socket = serverSocket.accept() ) {
+						handle( socket );
+					} catch ( IOException e ) {
+						// Server closed - exit loop
+					}
+				}
+			}, "mock-smtp-server" );
+			this.thread.setDaemon( true );
+			this.thread.start();
+		}
+
+		int getPort() {
+			return serverSocket.getLocalPort();
+		}
+
+		List<byte[]> getMessages() {
+			return messages;
+		}
+
+		private void handle( Socket socket ) throws IOException {
+			socket.setSoTimeout( 15000 );
+			BufferedReader			in		= new BufferedReader( new InputStreamReader( socket.getInputStream(), StandardCharsets.UTF_8 ) );
+			PrintWriter				out		= new PrintWriter( socket.getOutputStream(), true );
+			out.println( "220 mock-smtp ESMTP" );
+
+			String					line;
+			boolean					inData	= false;
+			ByteArrayOutputStream	data	= new ByteArrayOutputStream();
+			while ( ( line = in.readLine() ) != null ) {
+				if ( inData ) {
+					if ( line.equals( "." ) ) {
+						inData = false;
+						messages.add( data.toByteArray() );
+						data = new ByteArrayOutputStream();
+						out.println( "250 OK: queued" );
+					} else {
+						if ( line.startsWith( ".." ) ) {
+							line = line.substring( 1 );
+						}
+						data.write( line.getBytes( StandardCharsets.UTF_8 ) );
+						data.write( '\r' );
+						data.write( '\n' );
+					}
+					continue;
+				}
+
+				String upper = line.toUpperCase( Locale.ROOT );
+				if ( upper.startsWith( "EHLO" ) || upper.startsWith( "HELO" ) ) {
+					out.println( "250-mock-smtp" );
+					out.println( "250 8BITMIME" );
+				} else if ( upper.startsWith( "MAIL FROM" ) ) {
+					out.println( "250 OK" );
+				} else if ( upper.startsWith( "RCPT TO" ) ) {
+					out.println( "250 OK" );
+				} else if ( upper.startsWith( "DATA" ) ) {
+					inData = true;
+					data = new ByteArrayOutputStream();
+					out.println( "354 End data with <CR><LF>.<CR><LF>" );
+				} else if ( upper.startsWith( "QUIT" ) ) {
+					out.println( "221 Bye" );
+					break;
+				} else {
+					out.println( "250 OK" );
+				}
+			}
+		}
+
+		@Override
+		public void close() throws IOException {
+			serverSocket.close();
+		}
 	}
 }

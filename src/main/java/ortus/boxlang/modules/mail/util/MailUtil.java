@@ -18,6 +18,7 @@
 package ortus.boxlang.modules.mail.util;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.IDN;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -37,11 +38,14 @@ import org.apache.commons.text.WordUtils;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
 import jakarta.activation.CommandMap;
+import jakarta.activation.DataHandler;
 import jakarta.activation.MailcapCommandMap;
 import jakarta.mail.MessagingException;
+import jakarta.mail.Multipart;
 import jakarta.mail.Part;
 import jakarta.mail.internet.MimeBodyPart;
 import jakarta.mail.internet.MimeMultipart;
+import jakarta.mail.util.ByteArrayDataSource;
 import ortus.boxlang.runtime.BoxRuntime;
 import ortus.boxlang.runtime.context.IBoxContext;
 import ortus.boxlang.runtime.context.RequestBoxContext;
@@ -849,6 +853,243 @@ public class MailUtil {
 	}
 
 	/**
+	 * Recursively serializes a Jakarta Mail {@link Multipart} into a BoxLang {@link Array}
+	 * of part {@link IStruct}s so that it can survive Java object serialization to the spool cache.
+	 *
+	 * @param multipart The MIME multipart to serialize
+	 *
+	 * @return An Array of part structs (text, binary, or nested multipart)
+	 */
+	public static Array serializeMultipart( Multipart multipart ) {
+		Array parts = new Array();
+		try {
+			for ( int i = 0; i < multipart.getCount(); i++ ) {
+				jakarta.mail.BodyPart bodyPart = multipart.getBodyPart( i );
+				if ( bodyPart instanceof MimeBodyPart mimeBodyPart ) {
+					parts.add( serializeBodyPart( mimeBodyPart ) );
+				} else {
+					// Fallback for non-MIME body parts: capture raw bytes
+					IStruct data = new Struct();
+					data.put( MailKeys.partType, "binary" );
+					data.put( MailKeys.partContentType, bodyPart.getContentType() );
+					try ( InputStream in = bodyPart.getInputStream() ) {
+						data.put( MailKeys.partContent, in.readAllBytes() );
+					}
+					parts.add( data );
+				}
+			}
+		} catch ( Exception e ) {
+			throw new BoxRuntimeException( "Failed to serialize MIME multipart content: " + e.getMessage(), e );
+		}
+		return parts;
+	}
+
+	/**
+	 * Serializes a single {@link MimeBodyPart} into a BoxLang {@link IStruct}.
+	 *
+	 * @param part The MIME body part to serialize
+	 *
+	 * @return A struct describing the part's content and metadata
+	 */
+	public static IStruct serializeBodyPart( MimeBodyPart part ) {
+		try {
+			IStruct	data		= new Struct();
+			Object	content		= part.getContent();
+
+			// Metadata
+			String	disposition	= part.getDisposition();
+			if ( disposition != null ) {
+				data.put( MailKeys.disposition, disposition );
+			}
+
+			String	fileName	= part.getFileName();
+			if ( fileName != null ) {
+				data.put( MailKeys.fileName, fileName );
+			}
+
+			try {
+				String contentId = part.getContentID();
+				if ( contentId != null ) {
+					data.put( MailKeys.contentID, contentId );
+				}
+			} catch ( MessagingException e ) {
+				// Content-ID may not be parseable - ignore
+			}
+
+			String	description	= part.getDescription();
+			if ( description != null ) {
+				data.put( Key.description, description );
+			}
+
+			String	encoding	= part.getEncoding();
+			if ( encoding != null ) {
+				data.put( MailKeys.partEncoding, encoding );
+			}
+
+			// Full content-type string (includes parameters such as charset)
+			data.put( MailKeys.partContentType, part.getContentType() );
+
+			// Capture remaining headers not already represented explicitly
+			IStruct	headers		= new Struct();
+			var			allHeaders	= part.getAllHeaders();
+			while ( allHeaders.hasMoreElements() ) {
+				var		header	= allHeaders.nextElement();
+				String	name	= header.getName();
+				if ( name.equalsIgnoreCase( "Content-Type" )
+				    || name.equalsIgnoreCase( "Content-Disposition" )
+				    || name.equalsIgnoreCase( "Content-ID" )
+				    || name.equalsIgnoreCase( "Content-Description" )
+				    || name.equalsIgnoreCase( "Content-Transfer-Encoding" ) ) {
+					continue;
+				}
+				headers.put( name, header.getValue() );
+			}
+			if ( !headers.isEmpty() ) {
+				data.put( MailKeys.partHeaders, headers );
+			}
+
+			// Content
+			if ( content instanceof Multipart nestedMultipart ) {
+				data.put( MailKeys.partType, "multipart" );
+				data.put( MailKeys.partContent, serializeMultipart( nestedMultipart ) );
+				data.put( MailKeys.partSubtype, multipartSubType( nestedMultipart ) );
+			} else if ( content instanceof String stringContent ) {
+				data.put( MailKeys.partType, "text" );
+				data.put( MailKeys.partContent, stringContent );
+			} else {
+				data.put( MailKeys.partType, "binary" );
+				try ( InputStream in = part.getInputStream() ) {
+					data.put( MailKeys.partContent, in.readAllBytes() );
+				}
+			}
+
+			return data;
+		} catch ( Exception e ) {
+			throw new BoxRuntimeException( "Failed to serialize MIME body part: " + e.getMessage(), e );
+		}
+	}
+
+	/**
+	 * Rebuilds a {@link MimeMultipart} from a serialized {@link Array} of part structs.
+	 *
+	 * @param parts   The serialized part structs, or null for an empty multipart
+	 * @param subtype The multipart subtype (e.g. "mixed", "related", "alternative"), or null
+	 *
+	 * @return A reconstructed MimeMultipart
+	 */
+	public static MimeMultipart deserializeMultipart( Array parts, String subtype ) {
+		MimeMultipart multipart = subtype != null && !subtype.isBlank() ? new MimeMultipart( subtype ) : new MimeMultipart();
+		if ( parts != null ) {
+			try {
+				for ( int i = 0; i < parts.size(); i++ ) {
+					multipart.addBodyPart( deserializeBodyPart( StructCaster.cast( parts.get( i ) ) ) );
+				}
+			} catch ( MessagingException e ) {
+				throw new BoxRuntimeException( "Failed to rebuild MIME multipart: " + e.getMessage(), e );
+			}
+		}
+		return multipart;
+	}
+
+	/**
+	 * Extracts the multipart subtype (e.g. "mixed", "related", "alternative") from a
+	 * Jakarta Mail {@link Multipart} content-type string.
+	 *
+	 * @param multipart The multipart to inspect
+	 *
+	 * @return The subtype, or null if it cannot be determined
+	 */
+	private static String multipartSubType( Multipart multipart ) {
+		String contentType = multipart.getContentType();
+		if ( contentType == null ) {
+			return null;
+		}
+		int slash = contentType.indexOf( '/' );
+		if ( slash < 0 ) {
+			return null;
+		}
+		String subType = contentType.substring( slash + 1 ).trim();
+		int semi = subType.indexOf( ';' );
+		if ( semi >= 0 ) {
+			subType = subType.substring( 0, semi );
+		}
+		return subType.trim();
+	}
+
+	/**
+	 * Rebuilds a {@link MimeBodyPart} from a serialized {@link IStruct}.
+	 *
+	 * @param data The serialized part struct
+	 *
+	 * @return A reconstructed MimeBodyPart
+	 */
+	public static MimeBodyPart deserializeBodyPart( IStruct data ) {
+		try {
+			MimeBodyPart	bodyPart	= new MimeBodyPart();
+			String			partType	= data.getAsString( MailKeys.partType );
+			Object			content		= data.get( MailKeys.partContent );
+			String			contentType	= data.getAsString( MailKeys.partContentType );
+
+			if ( "multipart".equals( partType ) ) {
+				Array	nestedParts		= content instanceof Array arr ? arr : new Array();
+				String	nestedSubtype	= data.getAsString( MailKeys.partSubtype );
+				bodyPart.setContent( deserializeMultipart( nestedParts, nestedSubtype ) );
+			} else if ( "binary".equals( partType ) ) {
+				byte[]	bytes		= content instanceof byte[] byteContent ? byteContent : new byte[ 0 ];
+				String	baseType	= contentType == null ? "application/octet-stream" : contentType;
+				int		semicolon	= baseType.indexOf( ';' );
+				if ( semicolon >= 0 ) {
+					baseType = baseType.substring( 0, semicolon );
+				}
+				// Use a DataSource-backed DataHandler so Jakarta Mail copies the raw bytes
+				// directly (rather than routing through a text content handler, which would
+				// reject byte[] content for types such as text/plain).
+				bodyPart.setDataHandler( new DataHandler( new ByteArrayDataSource( bytes, baseType.trim() ) ) );
+			} else {
+				if ( contentType != null ) {
+					bodyPart.setContent( StringCaster.cast( content ), contentType );
+				} else {
+					bodyPart.setText( StringCaster.cast( content ) );
+				}
+			}
+
+			// Reapply metadata
+			if ( data.containsKey( MailKeys.disposition ) && data.get( MailKeys.disposition ) != null ) {
+				bodyPart.setDisposition( data.getAsString( MailKeys.disposition ) );
+			}
+			if ( data.containsKey( MailKeys.fileName ) && data.get( MailKeys.fileName ) != null ) {
+				bodyPart.setFileName( data.getAsString( MailKeys.fileName ) );
+			}
+			if ( data.containsKey( MailKeys.contentID ) && data.get( MailKeys.contentID ) != null ) {
+				bodyPart.setContentID( data.getAsString( MailKeys.contentID ) );
+			}
+			if ( data.containsKey( Key.description ) && data.get( Key.description ) != null ) {
+				bodyPart.setDescription( data.getAsString( Key.description ) );
+			}
+			if ( data.containsKey( MailKeys.partEncoding ) && data.get( MailKeys.partEncoding ) != null ) {
+				bodyPart.setHeader( "Content-Transfer-Encoding", data.getAsString( MailKeys.partEncoding ) );
+			}
+
+			Object headersObj = data.get( MailKeys.partHeaders );
+			if ( headersObj instanceof IStruct headers ) {
+				headers.forEach( ( key, value ) -> {
+					if ( value != null ) {
+						try {
+							bodyPart.setHeader( key.getName(), value.toString() );
+						} catch ( MessagingException e ) {
+							logger.warn( "Failed to restore MIME header [" + key.getName() + "]: " + e.getMessage() );
+						}
+					}
+				} );
+			}
+
+			return bodyPart;
+		} catch ( Exception e ) {
+			throw new BoxRuntimeException( "Failed to deserialize MIME body part: " + e.getMessage(), e );
+		}
+	}
+
+	/**
 	 * Converts an Email object to a serializable representation
 	 *
 	 * @param email      The Email object to serialize
@@ -904,14 +1145,10 @@ public class MailUtil {
 
 			// Store multipart content if applicable
 			if ( email instanceof MultiPartEmail multipartEmail && multipartEmail.getEmailBody() != null ) {
-				try {
-					// For multipart emails, we need to serialize the content differently
-					// since MimeMultipart doesn't have a simple getContent() method
-					emailData.put( MailKeys.emailBody, "multipart content" );
-					emailData.put( MailKeys.emailBodyContentType, multipartEmail.getEmailBody().getContentType() );
-				} catch ( Exception e ) {
-					logger.warn( "Failed to serialize multipart email body: " + e.getMessage() );
-				}
+				MimeMultipart emailBody = multipartEmail.getEmailBody();
+				emailData.put( MailKeys.emailBody, serializeMultipart( emailBody ) );
+				emailData.put( MailKeys.emailBodyContentType, emailBody.getContentType() );
+				emailData.put( MailKeys.emailBodySubtype, multipartSubType( emailBody ) );
 			}
 
 			return emailData;
@@ -936,14 +1173,20 @@ public class MailUtil {
 			String	emailType	= emailData.getAsString( MailKeys.emailType );
 			if ( "multipart".equals( emailType ) ) {
 				email = new MultiPartEmail();
-				// Set multipart content if available
-				if ( emailData.containsKey( MailKeys.emailBody ) && emailData.get( MailKeys.emailBody ) != null ) {
-					MultiPartEmail	multipart	= ( MultiPartEmail ) email;
-					Object			emailBody	= emailData.get( MailKeys.emailBody );
-					String			contentType	= emailData.getAsString( MailKeys.emailBodyContentType );
-					if ( emailBody != null && contentType != null ) {
-						multipart.setContent( emailBody, contentType );
-					}
+				// Rebuild the multipart body if present
+				Object emailBody = emailData.get( MailKeys.emailBody );
+				if ( emailBody != null && !( emailBody instanceof Array ) ) {
+					// A legacy entry spooled by a version of bx-mail that discarded multipart
+					// content (it stored the literal placeholder string "multipart content").
+					// There is nothing to recover - fail loudly so the spool drains it to the
+					// bounce cache rather than silently sending an empty message.
+					throw new BoxRuntimeException(
+					    "This spooled multipart email was serialized by an older (broken) version of bx-mail that discarded its content. "
+					        + "It cannot be reconstructed and must be re-queued. Delete the spool entry and re-send the email." );
+				}
+				if ( emailBody instanceof Array parts ) {
+					String subtype = emailData.getAsString( MailKeys.emailBodySubtype );
+					( ( MultiPartEmail ) email ).setContent( deserializeMultipart( parts, subtype ) );
 				}
 			} else {
 				email = new SimpleEmail();
