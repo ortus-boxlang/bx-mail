@@ -283,6 +283,11 @@ public class SpoolScheduler extends BaseScheduler {
 		}
 	}
 
+	/**
+	 * Called whenever the spool task fails
+	 * @param task
+	 * @param exception
+	 */
 	protected static void onSpoolFailure( ScheduledTask task, Throwable exception ) {
 		logger.debug( "Spool Task failed: " + exception.getMessage() );
 	}
