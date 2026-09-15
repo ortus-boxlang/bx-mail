@@ -45,7 +45,6 @@ import ortus.boxlang.runtime.scopes.Key;
 import ortus.boxlang.runtime.types.Array;
 import ortus.boxlang.runtime.types.IStruct;
 import ortus.boxlang.runtime.types.Struct;
-import ortus.boxlang.runtime.util.FileSystemUtil;
 
 public class SpoolScheduler extends BaseScheduler {
 
@@ -183,19 +182,17 @@ public class SpoolScheduler extends BaseScheduler {
 		IStruct entryData = StructCaster.cast( value );
 		try {
 			Email	message;
-			IStruct	entryAttributes		= entryData.getAsStruct( Key.attributes );
-			Array	mailServers			= entryData.getAsArray( MailKeys.mailServers );
-			Boolean	deleteAttachments	= BooleanCaster.cast( entryAttributes.getOrDefault( MailKeys.remove, false ) );
-			String	mimeAttach			= entryAttributes.getAsString( MailKeys.mimeAttach );
+			IStruct	entryAttributes	= entryData.getAsStruct( Key.attributes );
+			Array	mailServers		= entryData.getAsArray( MailKeys.mailServers );
 
 			// Deserialize the email from cached data
-			IStruct	messageData			= entryData.getAsStruct( Key.message );
+			IStruct	messageData		= entryData.getAsStruct( Key.message );
 			message = MailUtil.emailFromSerializableStruct( messageData );
 
+			// Note: attachment cleanup for `remove=true` is handled at spool time in
+			// MailUtil.spoolOrSend (the bytes are already captured in the spool entry),
+			// so no file deletion is needed here.
 			MailUtil.sendMessage( mailServers, entryAttributes, message );
-			if ( deleteAttachments && mimeAttach != null && FileSystemUtil.exists( mimeAttach ) ) {
-				FileSystemUtil.deleteFile( mimeAttach );
-			}
 			result.put( MailKeys.processed, result.getAsInteger( MailKeys.processed ) + 1 );
 			if ( logEnabled ) {
 				logger.debug( String.format(
@@ -283,6 +280,12 @@ public class SpoolScheduler extends BaseScheduler {
 		}
 	}
 
+	/**
+	 * Called whenever the spool task fails
+	 *
+	 * @param task
+	 * @param exception
+	 */
 	protected static void onSpoolFailure( ScheduledTask task, Throwable exception ) {
 		logger.debug( "Spool Task failed: " + exception.getMessage() );
 	}
