@@ -902,7 +902,7 @@ public class MailUtil {
 				data.put( MailKeys.disposition, disposition );
 			}
 
-			String	fileName	= part.getFileName();
+			String fileName = part.getFileName();
 			if ( fileName != null ) {
 				data.put( MailKeys.fileName, fileName );
 			}
@@ -916,12 +916,12 @@ public class MailUtil {
 				// Content-ID may not be parseable - ignore
 			}
 
-			String	description	= part.getDescription();
+			String description = part.getDescription();
 			if ( description != null ) {
 				data.put( Key.description, description );
 			}
 
-			String	encoding	= part.getEncoding();
+			String encoding = part.getEncoding();
 			if ( encoding != null ) {
 				data.put( MailKeys.partEncoding, encoding );
 			}
@@ -931,7 +931,7 @@ public class MailUtil {
 
 			// Capture remaining headers not already represented explicitly
 			IStruct	headers		= new Struct();
-			var			allHeaders	= part.getAllHeaders();
+			var		allHeaders	= part.getAllHeaders();
 			while ( allHeaders.hasMoreElements() ) {
 				var		header	= allHeaders.nextElement();
 				String	name	= header.getName();
@@ -1008,8 +1008,8 @@ public class MailUtil {
 		if ( slash < 0 ) {
 			return null;
 		}
-		String subType = contentType.substring( slash + 1 ).trim();
-		int semi = subType.indexOf( ';' );
+		String	subType	= contentType.substring( slash + 1 ).trim();
+		int		semi	= subType.indexOf( ';' );
 		if ( semi >= 0 ) {
 			subType = subType.substring( 0, semi );
 		}
@@ -1175,7 +1175,7 @@ public class MailUtil {
 				email = new MultiPartEmail();
 				// Rebuild the multipart body if present
 				Object emailBody = emailData.get( MailKeys.emailBody );
-				if ( emailBody != null && !( emailBody instanceof Array ) ) {
+				if ( emailBody != null && ! ( emailBody instanceof Array ) ) {
 					// A legacy entry spooled by a version of bx-mail that discarded multipart
 					// content (it stored the literal placeholder string "multipart content").
 					// There is nothing to recover - fail loudly so the spool drains it to the

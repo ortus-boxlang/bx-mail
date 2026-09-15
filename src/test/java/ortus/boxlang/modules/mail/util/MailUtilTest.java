@@ -904,8 +904,8 @@ public class MailUtilTest {
 			attachment.setName( "attachment.bin" );
 			originalEmail.attach( attachment );
 
-			IStruct	attributes		= Struct.of( Key.charset, "UTF-8" );
-			IStruct	serialized		= MailUtil.emailToSerializableStruct( originalEmail, attributes );
+			IStruct	attributes	= Struct.of( Key.charset, "UTF-8" );
+			IStruct	serialized	= MailUtil.emailToSerializableStruct( originalEmail, attributes );
 
 			assertEquals( "multipart", serialized.getAsString( MailKeys.emailType ) );
 			assertTrue( serialized.get( MailKeys.emailBody ) instanceof Array );

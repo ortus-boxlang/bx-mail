@@ -699,7 +699,7 @@ public class SpoolSchedulerTest extends BaseIntegrationTest {
 			email.setMsg( "Plain text body" );
 			email.addPart( "<h1>HTML body</h1>", "text/html" );
 
-			Path	attachmentFile	= staticTempDir.resolve( "spool-attachment.bin" );
+			Path attachmentFile = staticTempDir.resolve( "spool-attachment.bin" );
 			Files.write( attachmentFile, "attachment bytes".getBytes( StandardCharsets.UTF_8 ) );
 			EmailAttachment attachment = new EmailAttachment();
 			attachment.setPath( attachmentFile.toString() );
@@ -749,24 +749,24 @@ public class SpoolSchedulerTest extends BaseIntegrationTest {
 		legacyMessage.put( MailKeys.toAddresses, Array.of( Struct.of( Key.email, "recipient@example.com", Key._NAME, "Recipient" ) ) );
 		legacyMessage.put( MailKeys.headers, new Struct() );
 
-		IStruct attributes = Struct.of(
+		IStruct			attributes	= Struct.of(
 		    Key.from, "sender@example.com",
 		    Key.to, "recipient@example.com",
 		    Key.server, "127.0.0.1",
 		    Key.port, 25
 		);
 
-		IStruct entryData = Struct.of(
+		IStruct			entryData	= Struct.of(
 		    Key.message, legacyMessage,
 		    Key.attributes, attributes,
 		    MailKeys.mailServers, Array.of( Struct.of( Key.server, "127.0.0.1", Key.port, 25 ) )
 		);
 
-		ICacheProvider	spoolCache		= runtime.getCacheService().getCache( MailKeys.mailUnsent );
-		ICacheProvider	bounceCache		= runtime.getCacheService().getCache( MailKeys.mailBounced );
+		ICacheProvider	spoolCache	= runtime.getCacheService().getCache( MailKeys.mailUnsent );
+		ICacheProvider	bounceCache	= runtime.getCacheService().getCache( MailKeys.mailBounced );
 		spoolCache.clearAll();
 		bounceCache.clearAll();
-		int				initialBounce	= bounceCache.getSize();
+		int initialBounce = bounceCache.getSize();
 
 		spoolCache.set( "legacy-entry", entryData );
 
@@ -786,7 +786,7 @@ public class SpoolSchedulerTest extends BaseIntegrationTest {
 				attachmentNames.add( fileName );
 			}
 
-			Object		content		= part.getContent();
+			Object content = part.getContent();
 			if ( content instanceof Multipart nested ) {
 				collectParts( nested, textParts, attachmentNames );
 			} else if ( content instanceof String text ) {
@@ -801,21 +801,21 @@ public class SpoolSchedulerTest extends BaseIntegrationTest {
 	 */
 	private static class MockSmtpServer implements AutoCloseable {
 
-		private final ServerSocket		serverSocket;
-		private final List<byte[]>		messages	= new CopyOnWriteArrayList<>();
-		private final Thread			thread;
+		private final ServerSocket	serverSocket;
+		private final List<byte[]>	messages	= new CopyOnWriteArrayList<>();
+		private final Thread		thread;
 
 		MockSmtpServer() throws IOException {
 			this.serverSocket	= new ServerSocket( 0 );
 			this.thread			= new Thread( () -> {
-				while ( !serverSocket.isClosed() ) {
-					try ( Socket socket = serverSocket.accept() ) {
-						handle( socket );
-					} catch ( IOException e ) {
-						// Server closed - exit loop
-					}
-				}
-			}, "mock-smtp-server" );
+									while ( !serverSocket.isClosed() ) {
+										try ( Socket socket = serverSocket.accept() ) {
+											handle( socket );
+										} catch ( IOException e ) {
+											// Server closed - exit loop
+										}
+									}
+								}, "mock-smtp-server" );
 			this.thread.setDaemon( true );
 			this.thread.start();
 		}
@@ -830,8 +830,8 @@ public class SpoolSchedulerTest extends BaseIntegrationTest {
 
 		private void handle( Socket socket ) throws IOException {
 			socket.setSoTimeout( 15000 );
-			BufferedReader			in		= new BufferedReader( new InputStreamReader( socket.getInputStream(), StandardCharsets.UTF_8 ) );
-			PrintWriter				out		= new PrintWriter( socket.getOutputStream(), true );
+			BufferedReader	in	= new BufferedReader( new InputStreamReader( socket.getInputStream(), StandardCharsets.UTF_8 ) );
+			PrintWriter		out	= new PrintWriter( socket.getOutputStream(), true );
 			out.println( "220 mock-smtp ESMTP" );
 
 			String					line;
@@ -864,8 +864,8 @@ public class SpoolSchedulerTest extends BaseIntegrationTest {
 				} else if ( upper.startsWith( "RCPT TO" ) ) {
 					out.println( "250 OK" );
 				} else if ( upper.startsWith( "DATA" ) ) {
-					inData = true;
-					data = new ByteArrayOutputStream();
+					inData	= true;
+					data	= new ByteArrayOutputStream();
 					out.println( "354 End data with <CR><LF>.<CR><LF>" );
 				} else if ( upper.startsWith( "QUIT" ) ) {
 					out.println( "221 Bye" );
