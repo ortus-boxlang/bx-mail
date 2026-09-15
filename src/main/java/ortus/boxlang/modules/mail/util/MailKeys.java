@@ -120,5 +120,6 @@ public class MailKeys {
 	public static final Key	attachmentDisposition	= Key.of( "attachmentDisposition" );
 	public static final Key	attachmentDescription	= Key.of( "attachmentDescription" );
 	public static final Key	attachmentCid			= Key.of( "attachmentCid" );
+	public static final Key	attachmentFiles			= Key.of( "attachmentFiles" );
 
 }

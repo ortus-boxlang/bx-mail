@@ -236,6 +236,106 @@ public class SpoolSchedulerTest extends BaseIntegrationTest {
 	}
 
 	@Test
+	public void testSpoolingDeletesAttachment() throws Exception {
+		// `remove=true` should delete the source attachment at spool time, since the
+		// bytes are already captured in the spool entry.
+		Path attachment = staticTempDir.resolve( "remove-spool-attachment.txt" );
+		Files.write( attachment, "temporary attachment".getBytes( StandardCharsets.UTF_8 ) );
+
+		SimpleEmail email = new SimpleEmail();
+		email.setFrom( "test@example.com" );
+		email.addTo( "recipient@example.com" );
+		email.setSubject( "Remove Spool Attachment" );
+		email.setMsg( "Body" );
+
+		IStruct attributes = Struct.of(
+		    MailKeys.spoolEnable, true,
+		    Key.from, "test@example.com",
+		    Key.to, "recipient@example.com",
+		    MailKeys.subject, "Remove Spool Attachment",
+		    Key.server, "127.0.0.1",
+		    Key.port, 25,
+		    MailKeys.remove, true,
+		    MailKeys.mimeAttach, attachment.toString()
+		);
+
+		MailUtil.spoolOrSend( email, attributes, context );
+
+		SpoolScheduler.processSpool();
+
+		assertFalse( Files.exists( attachment ), "remove=true should delete the source attachment at spool time" );
+	}
+
+	@Test
+	public void testNonSpooledDeletesAttachment() throws Exception {
+		// `remove=true` should also delete the source attachment when the message is
+		// sent immediately (non-spooled) rather than being queued.
+		try ( MockSmtpServer server = new MockSmtpServer() ) {
+			Path attachment = staticTempDir.resolve( "remove-nonspool-attachment.txt" );
+			Files.write( attachment, "temporary attachment".getBytes( StandardCharsets.UTF_8 ) );
+
+			SimpleEmail email = new SimpleEmail();
+			email.setFrom( "test@example.com" );
+			email.addTo( "recipient@example.com" );
+			email.setSubject( "Remove Non-Spool Attachment" );
+			email.setMsg( "Body" );
+
+			IStruct attributes = Struct.of(
+			    MailKeys.spoolEnable, false,
+			    Key.from, "test@example.com",
+			    Key.to, "recipient@example.com",
+			    MailKeys.subject, "Remove Non-Spool Attachment",
+			    Key.server, "127.0.0.1",
+			    Key.port, server.getPort(),
+			    MailKeys.remove, true,
+			    MailKeys.mimeAttach, attachment.toString()
+			);
+
+			MailUtil.spoolOrSend( email, attributes, context );
+
+			assertEquals( 1, server.getMessages().size(), "Mock SMTP server should receive exactly one message" );
+			assertFalse( Files.exists( attachment ), "remove=true should delete the source attachment after a non-spooled send" );
+		}
+	}
+
+	@Test
+	public void testMailParamFileRemoveDeleted() throws Exception {
+		// `remove=true` should delete `mailparam file=` attachments too, not just `mimeAttach`.
+		try ( MockSmtpServer server = new MockSmtpServer() ) {
+			Path attachment = staticTempDir.resolve( "remove-mailparam-attachment.txt" );
+			Files.write( attachment, "mailparam attachment".getBytes( StandardCharsets.UTF_8 ) );
+
+			MultiPartEmail email = new MultiPartEmail();
+			email.setFrom( "test@example.com" );
+			email.addTo( "recipient@example.com" );
+			email.setSubject( "Remove MailParam Attachment" );
+
+			IStruct	attributes	= Struct.of(
+			    MailKeys.spoolEnable, false,
+			    Key.from, "test@example.com",
+			    Key.to, "recipient@example.com",
+			    MailKeys.subject, "Remove MailParam Attachment",
+			    Key.server, "127.0.0.1",
+			    Key.port, server.getPort(),
+			    Key.charset, "UTF-8",
+			    MailKeys.remove, true,
+			    MailKeys.encrypt, false,
+			    MailKeys.sign, false
+			);
+
+			Array	mailParams	= Array.of(
+			    Struct.of( Key.file, attachment.toString(), MailKeys.fileName, "remove-mailparam-attachment.txt" )
+			);
+
+			MailUtil.appendMimeContent( email, new StringBuffer( "Body" ), attributes, context, mailParams, new Array() );
+			MailUtil.spoolOrSend( email, attributes, context );
+
+			assertEquals( 1, server.getMessages().size(), "Mock SMTP server should receive exactly one message" );
+			assertFalse( Files.exists( attachment ), "remove=true should delete mailparam file= attachments after send" );
+		}
+	}
+
+	@Test
 	public void testMultipleEmailsSpooling() throws Exception {
 		ICacheProvider	spoolCache	= runtime.getCacheService().getCache( MailKeys.mailUnsent );
 		ICacheProvider	bounceCache	= runtime.getCacheService().getCache( MailKeys.mailBounced );
@@ -690,6 +790,11 @@ public class SpoolSchedulerTest extends BaseIntegrationTest {
 
 	@Test
 	public void testProcessMultiPartEmailContentPreserved() throws Exception {
+		// Stop the background SpoolTask registered in setUp() so it does not race with
+		// our manual processSpool() drain below. This test asserts an exact message
+		// count on a mock SMTP server, so the drain must be deterministic.
+		scheduler.shutdown();
+
 		try ( MockSmtpServer server = new MockSmtpServer() ) {
 			// Build a multipart email with text, html, and a binary attachment
 			MultiPartEmail email = new MultiPartEmail();

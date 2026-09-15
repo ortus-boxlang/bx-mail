@@ -434,6 +434,15 @@ public class MailUtil {
 
 		}
 
+		// Record every attachment file path (mailparam file= and mimeAttach) on the
+		// attributes so the centralized `remove` cleanup can delete them after the
+		// content has been captured (spool) or sent (immediate).
+		Array attachmentFiles = new Array();
+		mailParams.stream().map( StructCaster::cast )
+		    .filter( param -> param.get( Key._NAME ) == null && param.get( Key.file ) != null )
+		    .forEach( param -> attachmentFiles.add( param.getAsString( Key.file ) ) );
+		attributes.put( MailKeys.attachmentFiles, attachmentFiles );
+
 		// Process any file attachments
 		mailParams.stream().map( StructCaster::cast )
 		    .filter( param -> param.get( Key._NAME ) == null && param.get( Key.file ) != null )
@@ -463,9 +472,6 @@ public class MailUtil {
 					        attributes.getAsString( Key.charset ),
 					        param
 					    );
-					    if ( BooleanCaster.cast( attributes.getOrDefault( MailKeys.remove, false ) ) ) {
-						    FileSystemUtil.deleteFile( param.getAsString( Key.file ) );
-					    }
 				    }
 
 			    } catch ( EmailException e ) {
@@ -757,6 +763,47 @@ public class MailUtil {
 				    messageRef
 				);
 			}
+		}
+	}
+
+	/**
+	 * Deletes the source attachment file(s) when the {@code remove} attribute is set.
+	 * <p>
+	 * Callers invoke this only after the attachment content has been safely captured:
+	 * <ul>
+	 * <li>spooled messages - immediately after the content is serialized into the spool; or</li>
+	 * <li>non-spooled messages - immediately after a successful send.</li>
+	 * </ul>
+	 *
+	 * @param attributes the mail attributes containing the {@code remove} flag and attachment path(s)
+	 */
+	private static void deleteAttachmentsIfRequested( IStruct attributes ) {
+		if ( !BooleanCaster.cast( attributes.getOrDefault( MailKeys.remove, false ) ) ) {
+			return;
+		}
+
+		// Scalar `mimeAttach` (also recorded in `attachmentFiles` below; kept for clarity)
+		deleteFileIfExists( attributes.getAsString( MailKeys.mimeAttach ) );
+
+		// `mailparam file=` attachments and `mimeAttach` recorded during appendMimeContent
+		Array attachmentFiles = attributes.getAsArray( MailKeys.attachmentFiles );
+		if ( attachmentFiles != null ) {
+			for ( Object fileObj : attachmentFiles ) {
+				if ( fileObj != null ) {
+					deleteFileIfExists( StringCaster.cast( fileObj ) );
+				}
+			}
+		}
+	}
+
+	/**
+	 * Deletes a file if it exists, silently ignoring null paths and missing files.
+	 *
+	 * @param path the file path to delete, or null
+	 */
+	private static void deleteFileIfExists( String path ) {
+		if ( path != null && FileSystemUtil.exists( path ) ) {
+			FileSystemUtil.deleteFile( path );
 		}
 	}
 
@@ -1308,6 +1355,7 @@ public class MailUtil {
 			MailUtil.setMessageServer( StructCaster.cast( mailServers.get( 0 ) ), attributes, message );
 			try {
 				messageId = message.send();
+				deleteAttachmentsIfRequested( attributes );
 			} catch ( EmailException ee ) {
 				// if that fails, try any additional mail servers defined
 				if ( logger.isWarnEnabled() ) {
@@ -1325,6 +1373,7 @@ public class MailUtil {
 						MailUtil.setMessageServer( serverProperties, attributes, failoverMessage );
 						try {
 							messageId = failoverMessage.send();
+							deleteAttachmentsIfRequested( attributes );
 							break;
 						} catch ( EmailException eee ) {
 							logger.warn( "Failover mail server " + serverProperties.getAsString( Key.server )
@@ -1336,9 +1385,6 @@ public class MailUtil {
 				if ( messageId == null ) {
 					throw new EmailException( "All configured mail servers failed to send the message. Last error: " + ee.getMessage(), ee );
 				}
-			}
-			if ( BooleanCaster.cast( attributes.getOrDefault( MailKeys.remove, false ) ) && attributes.getAsString( MailKeys.mimeAttach ) != null ) {
-				FileSystemUtil.deleteFile( attributes.getAsString( MailKeys.mimeAttach ) );
 			}
 			return messageId;
 		} catch ( Exception e ) {
