@@ -18,6 +18,7 @@
 package ortus.boxlang.modules.mail.util;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.IDN;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -37,11 +38,14 @@ import org.apache.commons.text.WordUtils;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
 import jakarta.activation.CommandMap;
+import jakarta.activation.DataHandler;
 import jakarta.activation.MailcapCommandMap;
 import jakarta.mail.MessagingException;
+import jakarta.mail.Multipart;
 import jakarta.mail.Part;
 import jakarta.mail.internet.MimeBodyPart;
 import jakarta.mail.internet.MimeMultipart;
+import jakarta.mail.util.ByteArrayDataSource;
 import ortus.boxlang.runtime.BoxRuntime;
 import ortus.boxlang.runtime.context.IBoxContext;
 import ortus.boxlang.runtime.context.RequestBoxContext;
@@ -407,6 +411,27 @@ public class MailUtil {
 		    mailParts.stream().map( StructCaster::cast )
 		        .anyMatch(
 		            item -> item.getAsString( Key.type ).toLowerCase().contains( "text" ) || item.getAsString( Key.type ).toLowerCase().contains( "html" ) );
+		boolean	hasInlineImages	= mailParams.stream().map( StructCaster::cast )
+		    .anyMatch( param -> param.get( MailKeys.contentID ) != null );
+
+		// Record every attachment file path (mailparam file= and mimeAttach) on the
+		// attributes so the centralized `remove` cleanup can delete them after the
+		// content has been captured (spool) or sent (immediate).
+		Array	attachmentFiles	= new Array();
+		mailParams.stream().map( StructCaster::cast )
+		    .filter( param -> param.get( Key._NAME ) == null && param.get( Key.file ) != null )
+		    .forEach( param -> attachmentFiles.add( param.getAsString( Key.file ) ) );
+		attributes.put( MailKeys.attachmentFiles, attachmentFiles );
+
+		// Inline images (contentID) require a multipart/related structure so the
+		// `cid:` references in the content can resolve. This path assembles the
+		// related content and returns early, bypassing the mixed/mime paths below.
+		if ( hasInlineImages ) {
+			MimeMultipart container = buildRelatedContainer( buffer, attributes, mailParams, mailParts );
+			applyContent( message, attributes, container );
+			return;
+		}
+
 		if ( !hasContentParts ) {
 			if ( !encrypt && !sign && !hasFileParams ) {
 				message.setContent( buffer.toString() );
@@ -459,9 +484,6 @@ public class MailUtil {
 					        attributes.getAsString( Key.charset ),
 					        param
 					    );
-					    if ( BooleanCaster.cast( attributes.getOrDefault( MailKeys.remove, false ) ) ) {
-						    FileSystemUtil.deleteFile( param.getAsString( Key.file ) );
-					    }
 				    }
 
 			    } catch ( EmailException e ) {
@@ -530,6 +552,9 @@ public class MailUtil {
 				} else if ( attributes.containsKey( Key.file ) ) {
 					bodyPart.setFileName( Path.of( attributes.getAsString( Key.file ) ).getFileName().toString() );
 				}
+				if ( attributes.get( MailKeys.contentID ) != null ) {
+					bodyPart.setContentID( normalizeContentID( attributes.getAsString( MailKeys.contentID ) ) );
+				}
 				bodyPart.setContent( content, mimeType );
 			}
 
@@ -544,6 +569,231 @@ public class MailUtil {
 			throw new BoxRuntimeException( "An error occurred while attempting to attach content of type " + mimeType + " to the email", e );
 		} catch ( EmailException e ) {
 			throw new BoxRuntimeException( "An error occurred while attempting to attach content of type " + mimeType + " to the email", e );
+		}
+	}
+
+	/**
+	 * Normalizes a Content-ID value to the RFC 2392/5322 angle-bracket form used
+	 * in MIME `Content-ID` headers and `cid:` URL references.
+	 *
+	 * @param cid the raw content id ( e.g. "image1" or "<image1>" )
+	 *
+	 * @return the normalized content id wrapped in angle brackets, or null if blank
+	 */
+	public static String normalizeContentID( String cid ) {
+		if ( cid == null ) {
+			return null;
+		}
+		String trimmed = cid.trim();
+		if ( trimmed.isEmpty() ) {
+			return null;
+		}
+		if ( trimmed.startsWith( "<" ) && trimmed.endsWith( ">" ) ) {
+			trimmed = trimmed.substring( 1, trimmed.length() - 1 ).trim();
+		}
+		return "<" + trimmed + ">";
+	}
+
+	/**
+	 * Resolves a MIME type string to a canonical content type, defaulting unknown
+	 * or generic values appropriately.
+	 *
+	 * @param type the raw type string ( e.g. "HTML", "text", "text/plain" )
+	 *
+	 * @return a canonical content type
+	 */
+	private static String resolveContentType( String type ) {
+		String lower = type == null ? "text/plain" : type.toLowerCase();
+		if ( lower.contains( "html" ) ) {
+			return "text/html";
+		}
+		if ( lower.contains( "text" ) ) {
+			return "text/plain";
+		}
+		return lower;
+	}
+
+	/**
+	 * Creates an attachment {@link MimeBodyPart} from a mailparam struct, applying
+	 * disposition, file name, description, and Content-ID when present.
+	 *
+	 * @param param   the mailparam struct ( file=, disposition=, fileName=, description=, contentID= )
+	 * @param charset the charset for the part ( used for text-based metadata )
+	 *
+	 * @return the constructed MimeBodyPart
+	 */
+	public static MimeBodyPart createAttachmentBodyPart( IStruct param, String charset ) {
+		try {
+			Path	filePath	= Path.of( param.getAsString( Key.file ) );
+			byte[]	bytes		= Files.readAllBytes( filePath );
+			String	mimeType	= Files.probeContentType( filePath );
+			if ( mimeType == null && param.get( Key.type ) != null ) {
+				mimeType = param.getAsString( Key.type );
+			}
+			if ( mimeType == null ) {
+				mimeType = "application/octet-stream";
+			}
+
+			MimeBodyPart bodyPart = new MimeBodyPart();
+			bodyPart.setDataHandler( new DataHandler( new ByteArrayDataSource( bytes, mimeType ) ) );
+
+			String disposition = param.get( MailKeys.disposition ) != null ? param.getAsString( MailKeys.disposition ) : Part.ATTACHMENT;
+			bodyPart.setDisposition( disposition );
+
+			String fileName = param.getAsString( MailKeys.fileName );
+			if ( fileName == null ) {
+				fileName = filePath.getFileName().toString();
+			}
+			bodyPart.setFileName( fileName );
+
+			if ( param.get( Key.description ) != null ) {
+				bodyPart.setDescription( param.getAsString( Key.description ) );
+			}
+
+			if ( param.get( MailKeys.contentID ) != null ) {
+				bodyPart.setContentID( normalizeContentID( param.getAsString( MailKeys.contentID ) ) );
+			}
+
+			return bodyPart;
+		} catch ( MessagingException e ) {
+			throw new BoxRuntimeException( "An error occurred while creating an attachment body part: " + e.getMessage(), e );
+		} catch ( IOException e ) {
+			throw new BoxIOException( e );
+		}
+	}
+
+	/**
+	 * Assembles an HTML email with inline images into a {@code multipart/related}
+	 * structure so that {@code cid:} references in the content resolve correctly.
+	 * Any regular ( non-inline ) attachments are wrapped in an outer
+	 * {@code multipart/mixed}.
+	 *
+	 * @param buffer
+	 * @param attributes
+	 * @param mailParams
+	 * @param mailParts
+	 *
+	 * @return the assembled {@code multipart/related} ( or {@code multipart/mixed} ) container
+	 */
+	public static MimeMultipart buildRelatedContainer(
+	    StringBuffer buffer,
+	    IStruct attributes,
+	    Array mailParams,
+	    Array mailParts ) {
+		String charset = attributes.getAsString( Key.charset );
+		try {
+			MimeMultipart	related			= new MimeMultipart( "related" );
+
+			// Determine the text/html content parts ( if any ) to use as the root.
+			Array			contentParts	= mailParts.stream().map( StructCaster::cast )
+			    .filter( part -> {
+												    String type = part.getAsString( Key.type ).toLowerCase();
+												    return type.contains( "text" ) || type.contains( "html" );
+											    } )
+			    .collect( BLCollector.toArray() );
+
+			MimeBodyPart	rootPart		= new MimeBodyPart();
+			if ( contentParts.size() > 1 ) {
+				MimeMultipart alternative = new MimeMultipart( "alternative" );
+				for ( Object partObj : contentParts ) {
+					IStruct			part		= StructCaster.cast( partObj );
+					String			mimeType	= resolveContentType( part.getAsString( Key.type ) );
+					MimeBodyPart	altPart		= new MimeBodyPart();
+					altPart.setContent( StringCaster.cast( part.get( Key.result ) ), mimeType + ";charset=" + charset );
+					alternative.addBodyPart( altPart );
+				}
+				rootPart.setContent( alternative );
+			} else if ( contentParts.size() == 1 ) {
+				IStruct	part		= StructCaster.cast( contentParts.get( 0 ) );
+				String	mimeType	= resolveContentType( part.getAsString( Key.type ) );
+				rootPart.setContent( StringCaster.cast( part.get( Key.result ) ), mimeType + ";charset=" + charset );
+			} else {
+				String mimeType = resolveContentType( StringCaster.cast( attributes.getOrDefault( Key.type, "text/html" ) ) );
+				rootPart.setContent( buffer.toString(), mimeType + ";charset=" + charset );
+			}
+			related.addBodyPart( rootPart );
+
+			// Add inline images ( contentID ) and collect regular attachments.
+			Array regularAttachments = new Array();
+			mailParams.stream().map( StructCaster::cast )
+			    .filter( param -> param.get( Key._NAME ) == null && param.get( Key.file ) != null )
+			    .forEach( param -> {
+				    if ( param.get( MailKeys.contentID ) != null ) {
+					    try {
+						    related.addBodyPart( createAttachmentBodyPart( param, charset ) );
+					    } catch ( MessagingException e ) {
+						    throw new BoxRuntimeException( "An error occurred while attaching an inline image: " + e.getMessage(), e );
+					    }
+				    } else {
+					    regularAttachments.add( param );
+				    }
+			    } );
+
+			MimeMultipart container = related;
+			if ( regularAttachments.size() > 0 ) {
+				MimeMultipart	mixed		= new MimeMultipart( "mixed" );
+				MimeBodyPart	relatedPart	= new MimeBodyPart();
+				relatedPart.setContent( related );
+				mixed.addBodyPart( relatedPart );
+				for ( Object paramObj : regularAttachments ) {
+					mixed.addBodyPart( createAttachmentBodyPart( StructCaster.cast( paramObj ), charset ) );
+				}
+				container = mixed;
+			}
+
+			return container;
+		} catch ( MessagingException e ) {
+			throw new BoxRuntimeException( "An error occurred while assembling the related content: " + e.getMessage(), e );
+		}
+	}
+
+	/**
+	 * Applies the assembled content container to the message. For plain messages the
+	 * container is set directly with the appropriate multipart content type. When
+	 * signing or encryption is requested, the container is wrapped in a single body
+	 * part and then signed and/or encrypted ( sign-then-encrypt when both are set ).
+	 *
+	 * @param message
+	 * @param attributes
+	 * @param container
+	 */
+	private static void applyContent( MultiPartEmail message, IStruct attributes, MimeMultipart container ) {
+		boolean	sign	= attributes.getAsBoolean( MailKeys.sign );
+		boolean	encrypt	= attributes.getAsBoolean( MailKeys.encrypt );
+
+		if ( !sign && !encrypt ) {
+			message.setContent( container );
+			message.setContentType( "multipart/" + multipartSubType( container ) );
+			return;
+		}
+
+		try {
+			// Wrap the assembled container in a single body part so it can be signed
+			// and/or encrypted as one unit ( preserving the multipart/related structure ).
+			MimeBodyPart contentPart = new MimeBodyPart();
+			contentPart.setContent( container );
+
+			if ( sign ) {
+				MimeMultipart signed = MailEncryptionUtil.signMessagePart( attributes, contentPart );
+				if ( encrypt ) {
+					// Sign first, then encrypt the signed multipart.
+					MimeBodyPart signedPart = new MimeBodyPart();
+					signedPart.setContent( signed );
+					MimeBodyPart	encrypted		= MailEncryptionUtil.encryptBodyPart( attributes, signedPart );
+					MimeMultipart	finalMultipart	= new MimeMultipart();
+					finalMultipart.addBodyPart( encrypted );
+					message.setContent( finalMultipart, encrypted.getContentType() );
+				} else {
+					message.setContent( signed, signed.getContentType() );
+				}
+			} else {
+				MimeBodyPart	encrypted		= MailEncryptionUtil.encryptBodyPart( attributes, contentPart );
+				MimeMultipart	finalMultipart	= new MimeMultipart();
+				finalMultipart.addBodyPart( encrypted );
+				message.setContent( finalMultipart, encrypted.getContentType() );
+			}
+		} catch ( MessagingException e ) {
+			throw new BoxRuntimeException( "An error occurred while assembling the email content: " + e.getMessage(), e );
 		}
 	}
 
@@ -757,6 +1007,47 @@ public class MailUtil {
 	}
 
 	/**
+	 * Deletes the source attachment file(s) when the {@code remove} attribute is set.
+	 * <p>
+	 * Callers invoke this only after the attachment content has been safely captured:
+	 * <ul>
+	 * <li>spooled messages - immediately after the content is serialized into the spool; or</li>
+	 * <li>non-spooled messages - immediately after a successful send.</li>
+	 * </ul>
+	 *
+	 * @param attributes the mail attributes containing the {@code remove} flag and attachment path(s)
+	 */
+	private static void deleteAttachmentsIfRequested( IStruct attributes ) {
+		if ( !BooleanCaster.cast( attributes.getOrDefault( MailKeys.remove, false ) ) ) {
+			return;
+		}
+
+		// Scalar `mimeAttach` (also recorded in `attachmentFiles` below; kept for clarity)
+		deleteFileIfExists( attributes.getAsString( MailKeys.mimeAttach ) );
+
+		// `mailparam file=` attachments and `mimeAttach` recorded during appendMimeContent
+		Array attachmentFiles = attributes.getAsArray( MailKeys.attachmentFiles );
+		if ( attachmentFiles != null ) {
+			for ( Object fileObj : attachmentFiles ) {
+				if ( fileObj != null ) {
+					deleteFileIfExists( StringCaster.cast( fileObj ) );
+				}
+			}
+		}
+	}
+
+	/**
+	 * Deletes a file if it exists, silently ignoring null paths and missing files.
+	 *
+	 * @param path the file path to delete, or null
+	 */
+	private static void deleteFileIfExists( String path ) {
+		if ( path != null && FileSystemUtil.exists( path ) ) {
+			FileSystemUtil.deleteFile( path );
+		}
+	}
+
+	/**
 	 * Creates a new Email object with the same content and properties as the original,
 	 * but without the session initialization to allow for failover to different mail servers.
 	 *
@@ -849,6 +1140,243 @@ public class MailUtil {
 	}
 
 	/**
+	 * Recursively serializes a Jakarta Mail {@link Multipart} into a BoxLang {@link Array}
+	 * of part {@link IStruct}s so that it can survive Java object serialization to the spool cache.
+	 *
+	 * @param multipart The MIME multipart to serialize
+	 *
+	 * @return An Array of part structs (text, binary, or nested multipart)
+	 */
+	public static Array serializeMultipart( Multipart multipart ) {
+		Array parts = new Array();
+		try {
+			for ( int i = 0; i < multipart.getCount(); i++ ) {
+				jakarta.mail.BodyPart bodyPart = multipart.getBodyPart( i );
+				if ( bodyPart instanceof MimeBodyPart mimeBodyPart ) {
+					parts.add( serializeBodyPart( mimeBodyPart ) );
+				} else {
+					// Fallback for non-MIME body parts: capture raw bytes
+					IStruct data = new Struct();
+					data.put( MailKeys.partType, "binary" );
+					data.put( MailKeys.partContentType, bodyPart.getContentType() );
+					try ( InputStream in = bodyPart.getInputStream() ) {
+						data.put( MailKeys.partContent, in.readAllBytes() );
+					}
+					parts.add( data );
+				}
+			}
+		} catch ( Exception e ) {
+			throw new BoxRuntimeException( "Failed to serialize MIME multipart content: " + e.getMessage(), e );
+		}
+		return parts;
+	}
+
+	/**
+	 * Serializes a single {@link MimeBodyPart} into a BoxLang {@link IStruct}.
+	 *
+	 * @param part The MIME body part to serialize
+	 *
+	 * @return A struct describing the part's content and metadata
+	 */
+	public static IStruct serializeBodyPart( MimeBodyPart part ) {
+		try {
+			IStruct	data		= new Struct();
+			Object	content		= part.getContent();
+
+			// Metadata
+			String	disposition	= part.getDisposition();
+			if ( disposition != null ) {
+				data.put( MailKeys.disposition, disposition );
+			}
+
+			String fileName = part.getFileName();
+			if ( fileName != null ) {
+				data.put( MailKeys.fileName, fileName );
+			}
+
+			try {
+				String contentId = part.getContentID();
+				if ( contentId != null ) {
+					data.put( MailKeys.contentID, contentId );
+				}
+			} catch ( MessagingException e ) {
+				// Content-ID may not be parseable - ignore
+			}
+
+			String description = part.getDescription();
+			if ( description != null ) {
+				data.put( Key.description, description );
+			}
+
+			String encoding = part.getEncoding();
+			if ( encoding != null ) {
+				data.put( MailKeys.partEncoding, encoding );
+			}
+
+			// Full content-type string (includes parameters such as charset)
+			data.put( MailKeys.partContentType, part.getContentType() );
+
+			// Capture remaining headers not already represented explicitly
+			IStruct	headers		= new Struct();
+			var		allHeaders	= part.getAllHeaders();
+			while ( allHeaders.hasMoreElements() ) {
+				var		header	= allHeaders.nextElement();
+				String	name	= header.getName();
+				if ( name.equalsIgnoreCase( "Content-Type" )
+				    || name.equalsIgnoreCase( "Content-Disposition" )
+				    || name.equalsIgnoreCase( "Content-ID" )
+				    || name.equalsIgnoreCase( "Content-Description" )
+				    || name.equalsIgnoreCase( "Content-Transfer-Encoding" ) ) {
+					continue;
+				}
+				headers.put( name, header.getValue() );
+			}
+			if ( !headers.isEmpty() ) {
+				data.put( MailKeys.partHeaders, headers );
+			}
+
+			// Content
+			if ( content instanceof Multipart nestedMultipart ) {
+				data.put( MailKeys.partType, "multipart" );
+				data.put( MailKeys.partContent, serializeMultipart( nestedMultipart ) );
+				data.put( MailKeys.partSubtype, multipartSubType( nestedMultipart ) );
+			} else if ( content instanceof String stringContent ) {
+				data.put( MailKeys.partType, "text" );
+				data.put( MailKeys.partContent, stringContent );
+			} else {
+				data.put( MailKeys.partType, "binary" );
+				try ( InputStream in = part.getInputStream() ) {
+					data.put( MailKeys.partContent, in.readAllBytes() );
+				}
+			}
+
+			return data;
+		} catch ( Exception e ) {
+			throw new BoxRuntimeException( "Failed to serialize MIME body part: " + e.getMessage(), e );
+		}
+	}
+
+	/**
+	 * Rebuilds a {@link MimeMultipart} from a serialized {@link Array} of part structs.
+	 *
+	 * @param parts   The serialized part structs, or null for an empty multipart
+	 * @param subtype The multipart subtype (e.g. "mixed", "related", "alternative"), or null
+	 *
+	 * @return A reconstructed MimeMultipart
+	 */
+	public static MimeMultipart deserializeMultipart( Array parts, String subtype ) {
+		MimeMultipart multipart = subtype != null && !subtype.isBlank() ? new MimeMultipart( subtype ) : new MimeMultipart();
+		if ( parts != null ) {
+			try {
+				for ( int i = 0; i < parts.size(); i++ ) {
+					multipart.addBodyPart( deserializeBodyPart( StructCaster.cast( parts.get( i ) ) ) );
+				}
+			} catch ( MessagingException e ) {
+				throw new BoxRuntimeException( "Failed to rebuild MIME multipart: " + e.getMessage(), e );
+			}
+		}
+		return multipart;
+	}
+
+	/**
+	 * Extracts the multipart subtype (e.g. "mixed", "related", "alternative") from a
+	 * Jakarta Mail {@link Multipart} content-type string.
+	 *
+	 * @param multipart The multipart to inspect
+	 *
+	 * @return The subtype, or null if it cannot be determined
+	 */
+	private static String multipartSubType( Multipart multipart ) {
+		String contentType = multipart.getContentType();
+		if ( contentType == null ) {
+			return null;
+		}
+		int slash = contentType.indexOf( '/' );
+		if ( slash < 0 ) {
+			return null;
+		}
+		String	subType	= contentType.substring( slash + 1 ).trim();
+		int		semi	= subType.indexOf( ';' );
+		if ( semi >= 0 ) {
+			subType = subType.substring( 0, semi );
+		}
+		return subType.trim();
+	}
+
+	/**
+	 * Rebuilds a {@link MimeBodyPart} from a serialized {@link IStruct}.
+	 *
+	 * @param data The serialized part struct
+	 *
+	 * @return A reconstructed MimeBodyPart
+	 */
+	public static MimeBodyPart deserializeBodyPart( IStruct data ) {
+		try {
+			MimeBodyPart	bodyPart	= new MimeBodyPart();
+			String			partType	= data.getAsString( MailKeys.partType );
+			Object			content		= data.get( MailKeys.partContent );
+			String			contentType	= data.getAsString( MailKeys.partContentType );
+
+			if ( "multipart".equals( partType ) ) {
+				Array	nestedParts		= content instanceof Array arr ? arr : new Array();
+				String	nestedSubtype	= data.getAsString( MailKeys.partSubtype );
+				bodyPart.setContent( deserializeMultipart( nestedParts, nestedSubtype ) );
+			} else if ( "binary".equals( partType ) ) {
+				byte[]	bytes		= content instanceof byte[] byteContent ? byteContent : new byte[ 0 ];
+				String	baseType	= contentType == null ? "application/octet-stream" : contentType;
+				int		semicolon	= baseType.indexOf( ';' );
+				if ( semicolon >= 0 ) {
+					baseType = baseType.substring( 0, semicolon );
+				}
+				// Use a DataSource-backed DataHandler so Jakarta Mail copies the raw bytes
+				// directly (rather than routing through a text content handler, which would
+				// reject byte[] content for types such as text/plain).
+				bodyPart.setDataHandler( new DataHandler( new ByteArrayDataSource( bytes, baseType.trim() ) ) );
+			} else {
+				if ( contentType != null ) {
+					bodyPart.setContent( StringCaster.cast( content ), contentType );
+				} else {
+					bodyPart.setText( StringCaster.cast( content ) );
+				}
+			}
+
+			// Reapply metadata
+			if ( data.containsKey( MailKeys.disposition ) && data.get( MailKeys.disposition ) != null ) {
+				bodyPart.setDisposition( data.getAsString( MailKeys.disposition ) );
+			}
+			if ( data.containsKey( MailKeys.fileName ) && data.get( MailKeys.fileName ) != null ) {
+				bodyPart.setFileName( data.getAsString( MailKeys.fileName ) );
+			}
+			if ( data.containsKey( MailKeys.contentID ) && data.get( MailKeys.contentID ) != null ) {
+				bodyPart.setContentID( data.getAsString( MailKeys.contentID ) );
+			}
+			if ( data.containsKey( Key.description ) && data.get( Key.description ) != null ) {
+				bodyPart.setDescription( data.getAsString( Key.description ) );
+			}
+			if ( data.containsKey( MailKeys.partEncoding ) && data.get( MailKeys.partEncoding ) != null ) {
+				bodyPart.setHeader( "Content-Transfer-Encoding", data.getAsString( MailKeys.partEncoding ) );
+			}
+
+			Object headersObj = data.get( MailKeys.partHeaders );
+			if ( headersObj instanceof IStruct headers ) {
+				headers.forEach( ( key, value ) -> {
+					if ( value != null ) {
+						try {
+							bodyPart.setHeader( key.getName(), value.toString() );
+						} catch ( MessagingException e ) {
+							logger.warn( "Failed to restore MIME header [" + key.getName() + "]: " + e.getMessage() );
+						}
+					}
+				} );
+			}
+
+			return bodyPart;
+		} catch ( Exception e ) {
+			throw new BoxRuntimeException( "Failed to deserialize MIME body part: " + e.getMessage(), e );
+		}
+	}
+
+	/**
 	 * Converts an Email object to a serializable representation
 	 *
 	 * @param email      The Email object to serialize
@@ -904,14 +1432,10 @@ public class MailUtil {
 
 			// Store multipart content if applicable
 			if ( email instanceof MultiPartEmail multipartEmail && multipartEmail.getEmailBody() != null ) {
-				try {
-					// For multipart emails, we need to serialize the content differently
-					// since MimeMultipart doesn't have a simple getContent() method
-					emailData.put( MailKeys.emailBody, "multipart content" );
-					emailData.put( MailKeys.emailBodyContentType, multipartEmail.getEmailBody().getContentType() );
-				} catch ( Exception e ) {
-					logger.warn( "Failed to serialize multipart email body: " + e.getMessage() );
-				}
+				MimeMultipart emailBody = multipartEmail.getEmailBody();
+				emailData.put( MailKeys.emailBody, serializeMultipart( emailBody ) );
+				emailData.put( MailKeys.emailBodyContentType, emailBody.getContentType() );
+				emailData.put( MailKeys.emailBodySubtype, multipartSubType( emailBody ) );
 			}
 
 			return emailData;
@@ -936,14 +1460,20 @@ public class MailUtil {
 			String	emailType	= emailData.getAsString( MailKeys.emailType );
 			if ( "multipart".equals( emailType ) ) {
 				email = new MultiPartEmail();
-				// Set multipart content if available
-				if ( emailData.containsKey( MailKeys.emailBody ) && emailData.get( MailKeys.emailBody ) != null ) {
-					MultiPartEmail	multipart	= ( MultiPartEmail ) email;
-					Object			emailBody	= emailData.get( MailKeys.emailBody );
-					String			contentType	= emailData.getAsString( MailKeys.emailBodyContentType );
-					if ( emailBody != null && contentType != null ) {
-						multipart.setContent( emailBody, contentType );
-					}
+				// Rebuild the multipart body if present
+				Object emailBody = emailData.get( MailKeys.emailBody );
+				if ( emailBody != null && ! ( emailBody instanceof Array ) ) {
+					// A legacy entry spooled by a version of bx-mail that discarded multipart
+					// content (it stored the literal placeholder string "multipart content").
+					// There is nothing to recover - fail loudly so the spool drains it to the
+					// bounce cache rather than silently sending an empty message.
+					throw new BoxRuntimeException(
+					    "This spooled multipart email was serialized by an older (broken) version of bx-mail that discarded its content. "
+					        + "It cannot be reconstructed and must be re-queued. Delete the spool entry and re-send the email." );
+				}
+				if ( emailBody instanceof Array parts ) {
+					String subtype = emailData.getAsString( MailKeys.emailBodySubtype );
+					( ( MultiPartEmail ) email ).setContent( deserializeMultipart( parts, subtype ) );
 				}
 			} else {
 				email = new SimpleEmail();
@@ -1065,6 +1595,7 @@ public class MailUtil {
 			MailUtil.setMessageServer( StructCaster.cast( mailServers.get( 0 ) ), attributes, message );
 			try {
 				messageId = message.send();
+				deleteAttachmentsIfRequested( attributes );
 			} catch ( EmailException ee ) {
 				// if that fails, try any additional mail servers defined
 				if ( logger.isWarnEnabled() ) {
@@ -1082,6 +1613,7 @@ public class MailUtil {
 						MailUtil.setMessageServer( serverProperties, attributes, failoverMessage );
 						try {
 							messageId = failoverMessage.send();
+							deleteAttachmentsIfRequested( attributes );
 							break;
 						} catch ( EmailException eee ) {
 							logger.warn( "Failover mail server " + serverProperties.getAsString( Key.server )
@@ -1093,9 +1625,6 @@ public class MailUtil {
 				if ( messageId == null ) {
 					throw new EmailException( "All configured mail servers failed to send the message. Last error: " + ee.getMessage(), ee );
 				}
-			}
-			if ( BooleanCaster.cast( attributes.getOrDefault( MailKeys.remove, false ) ) && attributes.getAsString( MailKeys.mimeAttach ) != null ) {
-				FileSystemUtil.deleteFile( attributes.getAsString( MailKeys.mimeAttach ) );
 			}
 			return messageId;
 		} catch ( Exception e ) {
