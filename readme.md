@@ -102,6 +102,25 @@ Here's a PDF for you!
 </bx:mail>
 ```
 
+### Email with an inline image ( Templating syntax )
+
+```javascript
+<bx:mail
+	type="HTML"
+	from="boxlang@ortussolutions.com"
+	to="boxlang@ortussolutions.com"
+	subject="Sample inline image"
+>
+
+	<bx:mailparam file="/path/to/web.gif" disposition="inline" contentID="image1" />
+
+	<p>There should be an image here</p>
+	<img src="cid:image1">
+	<p>After the picture</p>
+
+</bx:mail>
+```
+
 ## Configuration
 
 Mail server connectivity may be provided either via runtime configuration ( e.g. `.boxlang.json` ) or via the attributes allowed by the mail component ( see above ).  An example configuration is provided below:

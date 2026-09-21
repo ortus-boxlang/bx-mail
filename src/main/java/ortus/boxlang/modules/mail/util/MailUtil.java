@@ -411,6 +411,26 @@ public class MailUtil {
 		    mailParts.stream().map( StructCaster::cast )
 		        .anyMatch(
 		            item -> item.getAsString( Key.type ).toLowerCase().contains( "text" ) || item.getAsString( Key.type ).toLowerCase().contains( "html" ) );
+		boolean	hasInlineImages	= mailParams.stream().map( StructCaster::cast )
+		    .anyMatch( param -> param.get( MailKeys.contentID ) != null );
+
+		// Record every attachment file path (mailparam file= and mimeAttach) on the
+		// attributes so the centralized `remove` cleanup can delete them after the
+		// content has been captured (spool) or sent (immediate).
+		Array	attachmentFiles	= new Array();
+		mailParams.stream().map( StructCaster::cast )
+		    .filter( param -> param.get( Key._NAME ) == null && param.get( Key.file ) != null )
+		    .forEach( param -> attachmentFiles.add( param.getAsString( Key.file ) ) );
+		attributes.put( MailKeys.attachmentFiles, attachmentFiles );
+
+		// Inline images (contentID) require a multipart/related structure so the
+		// `cid:` references in the content can resolve. This path assembles the
+		// related content and returns early, bypassing the mixed/mime paths below.
+		if ( hasInlineImages && !sign && !encrypt ) {
+			appendRelatedContent( message, buffer, attributes, mailParams, mailParts );
+			return;
+		}
+
 		if ( !hasContentParts ) {
 			if ( !encrypt && !sign && !hasFileParams ) {
 				message.setContent( buffer.toString() );
@@ -433,15 +453,6 @@ public class MailUtil {
 			    } );
 
 		}
-
-		// Record every attachment file path (mailparam file= and mimeAttach) on the
-		// attributes so the centralized `remove` cleanup can delete them after the
-		// content has been captured (spool) or sent (immediate).
-		Array attachmentFiles = new Array();
-		mailParams.stream().map( StructCaster::cast )
-		    .filter( param -> param.get( Key._NAME ) == null && param.get( Key.file ) != null )
-		    .forEach( param -> attachmentFiles.add( param.getAsString( Key.file ) ) );
-		attributes.put( MailKeys.attachmentFiles, attachmentFiles );
 
 		// Process any file attachments
 		mailParams.stream().map( StructCaster::cast )
@@ -540,6 +551,9 @@ public class MailUtil {
 				} else if ( attributes.containsKey( Key.file ) ) {
 					bodyPart.setFileName( Path.of( attributes.getAsString( Key.file ) ).getFileName().toString() );
 				}
+				if ( attributes.get( MailKeys.contentID ) != null ) {
+					bodyPart.setContentID( normalizeContentID( attributes.getAsString( MailKeys.contentID ) ) );
+				}
 				bodyPart.setContent( content, mimeType );
 			}
 
@@ -554,6 +568,182 @@ public class MailUtil {
 			throw new BoxRuntimeException( "An error occurred while attempting to attach content of type " + mimeType + " to the email", e );
 		} catch ( EmailException e ) {
 			throw new BoxRuntimeException( "An error occurred while attempting to attach content of type " + mimeType + " to the email", e );
+		}
+	}
+
+	/**
+	 * Normalizes a Content-ID value to the RFC 2392/5322 angle-bracket form used
+	 * in MIME `Content-ID` headers and `cid:` URL references.
+	 *
+	 * @param cid the raw content id ( e.g. "image1" or "<image1>" )
+	 *
+	 * @return the normalized content id wrapped in angle brackets, or null if blank
+	 */
+	public static String normalizeContentID( String cid ) {
+		if ( cid == null ) {
+			return null;
+		}
+		String trimmed = cid.trim();
+		if ( trimmed.isEmpty() ) {
+			return null;
+		}
+		if ( trimmed.startsWith( "<" ) && trimmed.endsWith( ">" ) ) {
+			trimmed = trimmed.substring( 1, trimmed.length() - 1 ).trim();
+		}
+		return "<" + trimmed + ">";
+	}
+
+	/**
+	 * Resolves a MIME type string to a canonical content type, defaulting unknown
+	 * or generic values appropriately.
+	 *
+	 * @param type the raw type string ( e.g. "HTML", "text", "text/plain" )
+	 *
+	 * @return a canonical content type
+	 */
+	private static String resolveContentType( String type ) {
+		String lower = type == null ? "text/plain" : type.toLowerCase();
+		if ( lower.contains( "html" ) ) {
+			return "text/html";
+		}
+		if ( lower.contains( "text" ) ) {
+			return "text/plain";
+		}
+		return lower;
+	}
+
+	/**
+	 * Creates an attachment {@link MimeBodyPart} from a mailparam struct, applying
+	 * disposition, file name, description, and Content-ID when present.
+	 *
+	 * @param param   the mailparam struct ( file=, disposition=, fileName=, description=, contentID= )
+	 * @param charset the charset for the part ( used for text-based metadata )
+	 *
+	 * @return the constructed MimeBodyPart
+	 */
+	public static MimeBodyPart createAttachmentBodyPart( IStruct param, String charset ) {
+		try {
+			Path	filePath	= Path.of( param.getAsString( Key.file ) );
+			byte[]	bytes		= Files.readAllBytes( filePath );
+			String	mimeType	= Files.probeContentType( filePath );
+			if ( mimeType == null && param.get( Key.type ) != null ) {
+				mimeType = param.getAsString( Key.type );
+			}
+			if ( mimeType == null ) {
+				mimeType = "application/octet-stream";
+			}
+
+			MimeBodyPart bodyPart = new MimeBodyPart();
+			bodyPart.setDataHandler( new DataHandler( new ByteArrayDataSource( bytes, mimeType ) ) );
+
+			String disposition = param.get( MailKeys.disposition ) != null ? param.getAsString( MailKeys.disposition ) : Part.ATTACHMENT;
+			bodyPart.setDisposition( disposition );
+
+			String fileName = param.getAsString( MailKeys.fileName );
+			if ( fileName == null ) {
+				fileName = filePath.getFileName().toString();
+			}
+			bodyPart.setFileName( fileName );
+
+			if ( param.get( Key.description ) != null ) {
+				bodyPart.setDescription( param.getAsString( Key.description ) );
+			}
+
+			if ( param.get( MailKeys.contentID ) != null ) {
+				bodyPart.setContentID( normalizeContentID( param.getAsString( MailKeys.contentID ) ) );
+			}
+
+			return bodyPart;
+		} catch ( MessagingException e ) {
+			throw new BoxRuntimeException( "An error occurred while creating an attachment body part: " + e.getMessage(), e );
+		} catch ( IOException e ) {
+			throw new BoxIOException( e );
+		}
+	}
+
+	/**
+	 * Assembles an HTML email with inline images into a {@code multipart/related}
+	 * structure so that {@code cid:} references in the content resolve correctly.
+	 * Any regular ( non-inline ) attachments are wrapped in an outer
+	 * {@code multipart/mixed}.
+	 *
+	 * @param message
+	 * @param buffer
+	 * @param attributes
+	 * @param mailParams
+	 * @param mailParts
+	 */
+	public static void appendRelatedContent(
+	    MultiPartEmail message,
+	    StringBuffer buffer,
+	    IStruct attributes,
+	    Array mailParams,
+	    Array mailParts ) {
+		String charset = attributes.getAsString( Key.charset );
+		try {
+			MimeMultipart	related			= new MimeMultipart( "related" );
+
+			// Determine the text/html content parts ( if any ) to use as the root.
+			Array			contentParts	= mailParts.stream().map( StructCaster::cast )
+			    .filter( part -> {
+												    String type = part.getAsString( Key.type ).toLowerCase();
+												    return type.contains( "text" ) || type.contains( "html" );
+											    } )
+			    .collect( BLCollector.toArray() );
+
+			MimeBodyPart	rootPart		= new MimeBodyPart();
+			if ( contentParts.size() > 1 ) {
+				MimeMultipart alternative = new MimeMultipart( "alternative" );
+				for ( Object partObj : contentParts ) {
+					IStruct			part		= StructCaster.cast( partObj );
+					String			mimeType	= resolveContentType( part.getAsString( Key.type ) );
+					MimeBodyPart	altPart		= new MimeBodyPart();
+					altPart.setContent( StringCaster.cast( part.get( Key.result ) ), mimeType + ";charset=" + charset );
+					alternative.addBodyPart( altPart );
+				}
+				rootPart.setContent( alternative );
+			} else if ( contentParts.size() == 1 ) {
+				IStruct	part		= StructCaster.cast( contentParts.get( 0 ) );
+				String	mimeType	= resolveContentType( part.getAsString( Key.type ) );
+				rootPart.setContent( StringCaster.cast( part.get( Key.result ) ), mimeType + ";charset=" + charset );
+			} else {
+				String mimeType = resolveContentType( StringCaster.cast( attributes.getOrDefault( Key.type, "text/html" ) ) );
+				rootPart.setContent( buffer.toString(), mimeType + ";charset=" + charset );
+			}
+			related.addBodyPart( rootPart );
+
+			// Add inline images ( contentID ) and collect regular attachments.
+			Array regularAttachments = new Array();
+			mailParams.stream().map( StructCaster::cast )
+			    .filter( param -> param.get( Key._NAME ) == null && param.get( Key.file ) != null )
+			    .forEach( param -> {
+				    if ( param.get( MailKeys.contentID ) != null ) {
+					    try {
+						    related.addBodyPart( createAttachmentBodyPart( param, charset ) );
+					    } catch ( MessagingException e ) {
+						    throw new BoxRuntimeException( "An error occurred while attaching an inline image: " + e.getMessage(), e );
+					    }
+				    } else {
+					    regularAttachments.add( param );
+				    }
+			    } );
+
+			MimeMultipart container = related;
+			if ( regularAttachments.size() > 0 ) {
+				MimeMultipart	mixed		= new MimeMultipart( "mixed" );
+				MimeBodyPart	relatedPart	= new MimeBodyPart();
+				relatedPart.setContent( related );
+				mixed.addBodyPart( relatedPart );
+				for ( Object paramObj : regularAttachments ) {
+					mixed.addBodyPart( createAttachmentBodyPart( StructCaster.cast( paramObj ), charset ) );
+				}
+				container = mixed;
+			}
+
+			message.setContent( container );
+			message.setContentType( container == related ? "multipart/related" : "multipart/mixed" );
+		} catch ( MessagingException e ) {
+			throw new BoxRuntimeException( "An error occurred while assembling the related content: " + e.getMessage(), e );
 		}
 	}
 

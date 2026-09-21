@@ -45,6 +45,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import jakarta.mail.Session;
+import jakarta.mail.internet.MimeBodyPart;
 import jakarta.mail.internet.MimeMultipart;
 import ortus.boxlang.runtime.BoxRuntime;
 import ortus.boxlang.runtime.scopes.Key;
@@ -928,6 +929,56 @@ public class MailUtilTest {
 			}
 		} finally {
 			Files.deleteIfExists( tempFile );
+		}
+	}
+
+	@DisplayName( "It assembles multipart/related inline images and round-trips Content-ID" )
+	@Test
+	public void testInlineImageRelatedContentRoundTrip() throws Exception {
+		Path imageFile = Files.createTempFile( "bx-mail-inline-", ".gif" );
+		Files.write( imageFile, "FAKE_GIF".getBytes( StandardCharsets.UTF_8 ) );
+		try {
+			MultiPartEmail	email		= new MultiPartEmail();
+
+			IStruct			attributes	= Struct.of(
+			    Key.type, "text/html",
+			    Key.charset, "utf-8",
+			    MailKeys.encrypt, false,
+			    MailKeys.sign, false
+			);
+			Array			mailParams	= Array.of(
+			    Struct.of(
+			        Key.file, imageFile.toString(),
+			        MailKeys.disposition, "inline",
+			        MailKeys.contentID, "image1"
+			    )
+			);
+
+			MailUtil.appendMimeContent( email, new StringBuffer( "<img src=\"cid:image1\">" ), attributes, null, mailParams, new Array() );
+
+			MimeMultipart body = email.getEmailBody();
+			assertNotNull( body );
+			assertTrue( body.getContentType().startsWith( "multipart/related" ) );
+			assertEquals( 2, body.getCount() );
+			assertTrue( body.getBodyPart( 0 ).getDataHandler().getContentType().startsWith( "text/html" ) );
+			assertTrue( body.getBodyPart( 0 ).getContent().toString().contains( "cid:image1" ) );
+
+			MimeBodyPart imagePart = ( MimeBodyPart ) body.getBodyPart( 1 );
+			assertEquals( "<image1>", imagePart.getContentID() );
+			assertEquals( jakarta.mail.Part.INLINE, imagePart.getDisposition() );
+
+			// Round-trip through the spool serialization
+			IStruct serialized = MailUtil.emailToSerializableStruct( email, attributes );
+			assertEquals( "related", serialized.getAsString( MailKeys.emailBodySubtype ) );
+
+			Email deserialized = MailUtil.emailFromSerializableStruct( serialized );
+			assertTrue( deserialized instanceof MultiPartEmail );
+			MimeMultipart roundTripBody = ( ( MultiPartEmail ) deserialized ).getEmailBody();
+			assertNotNull( roundTripBody );
+			assertTrue( roundTripBody.getContentType().startsWith( "multipart/related" ) );
+			assertEquals( "<image1>", ( ( MimeBodyPart ) roundTripBody.getBodyPart( 1 ) ).getContentID() );
+		} finally {
+			Files.deleteIfExists( imageFile );
 		}
 	}
 
