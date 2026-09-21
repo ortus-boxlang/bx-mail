@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.14] - 2026-09-21
+
 ### Added
 
 - [BLMODULES-295](https://ortussolutions.atlassian.net/browse/BLMODULES-295) - Add MIME body part serialization so spooled multipart messages survive Java object serialization
@@ -167,7 +169,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - First iteration of this module
 
-[unreleased]: https://github.com/ortus-boxlang/bx-mail/compare/v1.4.13...HEAD
+[unreleased]: https://github.com/ortus-boxlang/bx-mail/compare/v1.4.14...HEAD
+[1.4.14]: https://github.com/ortus-boxlang/bx-mail/compare/v1.4.13...v1.4.14
 [1.4.13]: https://github.com/ortus-boxlang/bx-mail/compare/v1.4.12...v1.4.13
 [1.4.12]: https://github.com/ortus-boxlang/bx-mail/compare/v1.4.11...v1.4.12
 [1.4.11]: https://github.com/ortus-boxlang/bx-mail/compare/v1.4.10...v1.4.11
