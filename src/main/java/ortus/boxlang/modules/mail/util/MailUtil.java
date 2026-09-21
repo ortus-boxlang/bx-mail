@@ -426,8 +426,9 @@ public class MailUtil {
 		// Inline images (contentID) require a multipart/related structure so the
 		// `cid:` references in the content can resolve. This path assembles the
 		// related content and returns early, bypassing the mixed/mime paths below.
-		if ( hasInlineImages && !sign && !encrypt ) {
-			appendRelatedContent( message, buffer, attributes, mailParams, mailParts );
+		if ( hasInlineImages ) {
+			MimeMultipart container = buildRelatedContainer( buffer, attributes, mailParams, mailParts );
+			applyContent( message, attributes, container );
 			return;
 		}
 
@@ -667,14 +668,14 @@ public class MailUtil {
 	 * Any regular ( non-inline ) attachments are wrapped in an outer
 	 * {@code multipart/mixed}.
 	 *
-	 * @param message
 	 * @param buffer
 	 * @param attributes
 	 * @param mailParams
 	 * @param mailParts
+	 *
+	 * @return the assembled {@code multipart/related} ( or {@code multipart/mixed} ) container
 	 */
-	public static void appendRelatedContent(
-	    MultiPartEmail message,
+	public static MimeMultipart buildRelatedContainer(
 	    StringBuffer buffer,
 	    IStruct attributes,
 	    Array mailParams,
@@ -740,10 +741,59 @@ public class MailUtil {
 				container = mixed;
 			}
 
-			message.setContent( container );
-			message.setContentType( container == related ? "multipart/related" : "multipart/mixed" );
+			return container;
 		} catch ( MessagingException e ) {
 			throw new BoxRuntimeException( "An error occurred while assembling the related content: " + e.getMessage(), e );
+		}
+	}
+
+	/**
+	 * Applies the assembled content container to the message. For plain messages the
+	 * container is set directly with the appropriate multipart content type. When
+	 * signing or encryption is requested, the container is wrapped in a single body
+	 * part and then signed and/or encrypted ( sign-then-encrypt when both are set ).
+	 *
+	 * @param message
+	 * @param attributes
+	 * @param container
+	 */
+	private static void applyContent( MultiPartEmail message, IStruct attributes, MimeMultipart container ) {
+		boolean	sign	= attributes.getAsBoolean( MailKeys.sign );
+		boolean	encrypt	= attributes.getAsBoolean( MailKeys.encrypt );
+
+		if ( !sign && !encrypt ) {
+			message.setContent( container );
+			message.setContentType( "multipart/" + multipartSubType( container ) );
+			return;
+		}
+
+		try {
+			// Wrap the assembled container in a single body part so it can be signed
+			// and/or encrypted as one unit ( preserving the multipart/related structure ).
+			MimeBodyPart contentPart = new MimeBodyPart();
+			contentPart.setContent( container );
+
+			if ( sign ) {
+				MimeMultipart signed = MailEncryptionUtil.signMessagePart( attributes, contentPart );
+				if ( encrypt ) {
+					// Sign first, then encrypt the signed multipart.
+					MimeBodyPart signedPart = new MimeBodyPart();
+					signedPart.setContent( signed );
+					MimeBodyPart	encrypted		= MailEncryptionUtil.encryptBodyPart( attributes, signedPart );
+					MimeMultipart	finalMultipart	= new MimeMultipart();
+					finalMultipart.addBodyPart( encrypted );
+					message.setContent( finalMultipart, encrypted.getContentType() );
+				} else {
+					message.setContent( signed, signed.getContentType() );
+				}
+			} else {
+				MimeBodyPart	encrypted		= MailEncryptionUtil.encryptBodyPart( attributes, contentPart );
+				MimeMultipart	finalMultipart	= new MimeMultipart();
+				finalMultipart.addBodyPart( encrypted );
+				message.setContent( finalMultipart, encrypted.getContentType() );
+			}
+		} catch ( MessagingException e ) {
+			throw new BoxRuntimeException( "An error occurred while assembling the email content: " + e.getMessage(), e );
 		}
 	}
 

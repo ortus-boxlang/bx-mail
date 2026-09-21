@@ -514,6 +514,88 @@ public class MailTest {
 		assertEquals( "Mail Test", StringCaster.cast( message.getSubject() ).trim() );
 	}
 
+	@DisplayName( "It can sign HTML mail with an inline image via contentID" )
+	@Test
+	public void testMailSignWithInlineImage() throws MessagingException, IOException {
+		variables.put( Key.of( "testFile" ), testBinaryFile );
+		variables.put( Key.of( "testKeystore" ), testKeystore );
+		variables.put( Key.of( "keystorePassword" ), testKeystorePassword );
+		variables.put( Key.of( "keystoreAlias" ), testKeystoreAlias );
+		instance.executeSource(
+		    """
+		                     	<bx:mail
+		    		from="jclausen@ortussolutions.com"
+		    		to="jclausen@ortussolutions.com"
+		    		subject="Mail Test"
+		    		type="HTML"
+		    		server="127.0.0.1"
+		    		port="25"
+		    		spoolEnable="false"
+		    		debug="true"
+		    messageIdentifier="messageId"
+		    messageVariable="messageVar"
+		    sign=true
+		    keystore="#testKeystore#"
+		    keystorePassword="#keystorePassword#"
+		    keyAlias="#keystoreAlias#"
+		    keyPassword="#keystorePassword#"
+		    	>
+		    <bx:mailparam file="#testFile#" disposition="inline" contentID="image1" />
+		    <p>There should be an image here</p>
+		    <img src="cid:image1">
+		    <p>After the picture</p>
+		    </bx:mail>
+		                     """,
+		    context, BoxSourceType.BOXTEMPLATE );
+		assertTrue( variables.get( messageId ) instanceof String );
+		assertTrue( variables.get( messageVar ) instanceof Email );
+		Email			message	= ( Email ) variables.get( messageVar );
+		SMIMEToolkit	toolkit	= new SMIMEToolkit( new BcDigestCalculatorProvider() );
+		assertTrue( toolkit.isSigned( message.getMimeMessage() ) );
+		MimeMultipart	signed	= ( MimeMultipart ) message.getMimeMessage().getContent();
+		MimeMultipart	related	= ( MimeMultipart ) signed.getBodyPart( 0 ).getContent();
+		assertTrue( related.getContentType().startsWith( "multipart/related" ) );
+		MimeBodyPart imagePart = ( MimeBodyPart ) related.getBodyPart( 1 );
+		assertEquals( "<image1>", imagePart.getContentID() );
+		assertEquals( jakarta.mail.Part.INLINE, imagePart.getDisposition() );
+	}
+
+	@DisplayName( "It can encrypt HTML mail with an inline image via contentID" )
+	@Test
+	public void testMailEncryptWithInlineImage() throws MessagingException, IOException {
+		variables.put( Key.of( "testFile" ), testBinaryFile );
+		variables.put( Key.of( "testCert" ), testCert );
+		instance.executeSource(
+		    """
+		                     	<bx:mail
+		    		from="jclausen@ortussolutions.com"
+		    		to="jclausen@ortussolutions.com"
+		    		subject="Mail Test"
+		    		type="HTML"
+		    		server="127.0.0.1"
+		    		port="25"
+		    		spoolEnable="false"
+		    		debug="true"
+		    messageIdentifier="messageId"
+		    messageVariable="messageVar"
+		    encrypt=true
+		    recipientCert="#testCert#"
+		    	>
+		    <bx:mailparam file="#testFile#" disposition="inline" contentID="image1" />
+		    <p>There should be an image here</p>
+		    <img src="cid:image1">
+		    <p>After the picture</p>
+		    </bx:mail>
+		                     """,
+		    context, BoxSourceType.BOXTEMPLATE );
+		assertTrue( variables.get( messageId ) instanceof String );
+		assertTrue( variables.get( messageVar ) instanceof Email );
+		Email			message			= ( Email ) variables.get( messageVar );
+		SMIMEToolkit	toolkit			= new SMIMEToolkit( new BcDigestCalculatorProvider() );
+		MimeMultipart	finalMultipart	= ( MimeMultipart ) message.getContent();
+		assertTrue( toolkit.isEncrypted( finalMultipart.getBodyPart( 0 ) ) );
+	}
+
 	@DisplayName( "It can test a basic encrypting of mail" )
 	@Test
 	public void testMailEncrypt() throws IOException, MessagingException {
