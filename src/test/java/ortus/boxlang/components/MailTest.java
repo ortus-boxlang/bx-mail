@@ -307,16 +307,92 @@ public class MailTest {
 		assertTrue( variables.get( messageVar ) instanceof Email );
 		Email message = ( Email ) variables.get( messageVar );
 		assertTrue( message.getEmailBody() instanceof MimeMultipart );
-		MimeMultipart	part1	= ( MimeMultipart ) message.getEmailBody().getBodyPart( 0 ).getContent();
-		MimeMultipart	part2	= ( MimeMultipart ) message.getEmailBody().getBodyPart( 1 ).getContent();
-		assertEquals( "Hello mail!", part1.getBodyPart( 0 ).getContent().toString().trim() );
-		assertEquals( "text/plain;charset=utf-8", part1.getBodyPart( 0 ).getContentType().toString() );
-		assertEquals( "<h1>Hello mail!</h1>", part2.getBodyPart( 0 ).getContent().toString().trim() );
-		assertEquals( "text/html;charset=utf-8", part2.getBodyPart( 0 ).getContentType().toString() );
+		// No attachments → the email body is the multipart/alternative group.
+		assertTrue( message.getEmailBody().getContentType().startsWith( "multipart/alternative" ) );
+		MimeMultipart alt = ( MimeMultipart ) message.getEmailBody();
+		assertEquals( "Hello mail!", alt.getBodyPart( 0 ).getContent().toString().trim() );
+		assertEquals( "text/plain; charset=utf-8", alt.getBodyPart( 0 ).getContentType().toString() );
+		assertEquals( "<h1>Hello mail!</h1>", alt.getBodyPart( 1 ).getContent().toString().trim() );
+		assertEquals( "text/html; charset=utf-8", alt.getBodyPart( 1 ).getContentType().toString() );
 		assertEquals( "Mail Test", StringCaster.cast( message.getSubject() ).trim() );
 		assertEquals( "jclausen@ortussolutions.com", message.getToAddresses().get( 0 ).toString() );
 		assertEquals( "jclausen@ortussolutions.com", message.getFromAddress().toString() );
 		assertEquals( "1", message.getHeader( "X-Priority" ) );
+	}
+
+	@DisplayName( "It encodes text/html parts as UTF-8 while keeping the text/html label and groups them in multipart/alternative ( BL-2708 )" )
+	@Test
+	public void testMailPartsUmlautUtf8() throws IOException, MessagingException {
+		variables.put( Key.of( "umlautText" ), "Text \u00e4\u00f6\u00fc" );
+		variables.put( Key.of( "umlautHtml" ), "<p>Html \u00e4\u00f6\u00fc</p>" );
+		instance.executeSource(
+		    """
+		    <bx:mail
+		        from="jclausen@ortussolutions.com"
+		        to="jclausen@ortussolutions.com"
+		        subject="Umlaut Test"
+		        charset="utf-8"
+		        server="127.0.0.1"
+		        port="25"
+		        spoolEnable="false"
+		        debug="true"
+		        messageIdentifier="messageId"
+		        messageVariable="messageVar"
+		    >
+		        <bx:mailpart type="text">#umlautText#</bx:mailpart>
+		        <bx:mailpart type="html">#umlautHtml#</bx:mailpart>
+		    </bx:mail>
+		    """,
+		    context, BoxSourceType.BOXTEMPLATE );
+		assertTrue( variables.get( messageId ) instanceof String );
+		assertTrue( variables.get( messageVar ) instanceof Email );
+		Email message = ( Email ) variables.get( messageVar );
+		assertTrue( message.getEmailBody() instanceof MimeMultipart );
+		assertTrue( message.getEmailBody().getContentType().startsWith( "multipart/alternative" ) );
+		MimeMultipart	alt			= ( MimeMultipart ) message.getEmailBody();
+		// The HTML part must stay labelled text/html ( not text/plain ).
+		MimeBodyPart	htmlPart	= ( MimeBodyPart ) alt.getBodyPart( 1 );
+		assertEquals( "text/html; charset=utf-8", htmlPart.getContentType().toString() );
+		// The body must decode back to the original umlauts ( i.e. encoded as UTF-8 ).
+		assertEquals( "<p>Html \u00e4\u00f6\u00fc</p>", StringCaster.cast( htmlPart.getContent() ).trim() );
+		MimeBodyPart textPart = ( MimeBodyPart ) alt.getBodyPart( 0 );
+		assertEquals( "text/plain; charset=utf-8", textPart.getContentType().toString() );
+		assertEquals( "Text \u00e4\u00f6\u00fc", StringCaster.cast( textPart.getContent() ).trim() );
+	}
+
+	@DisplayName( "It encodes the text body of a mail with an attachment as UTF-8 ( BL-2708 )" )
+	@Test
+	public void testMailTextBodyAttachmentUtf8() throws IOException, MessagingException {
+		variables.put( Key.of( "testFile" ), testBinaryFile );
+		variables.put( Key.of( "umlautText" ), "Rechnung \u00e4\u00f6\u00fc" );
+		instance.executeSource(
+		    """
+		    <bx:mail
+		        from="jclausen@ortussolutions.com"
+		        to="jclausen@ortussolutions.com"
+		        subject="Umlaut Attach Test"
+		        charset="utf-8"
+		        server="127.0.0.1"
+		        port="25"
+		        spoolEnable="false"
+		        debug="true"
+		        messageIdentifier="messageId"
+		        messageVariable="messageVar"
+		    >
+		        <bx:mailparam file="#testFile#"/>
+		        #umlautText#
+		    </bx:mail>
+		    """,
+		    context, BoxSourceType.BOXTEMPLATE );
+		assertTrue( variables.get( messageId ) instanceof String );
+		assertTrue( variables.get( messageVar ) instanceof Email );
+		Email message = ( Email ) variables.get( messageVar );
+		assertTrue( message.getEmailBody() instanceof MimeMultipart );
+		assertTrue( message.getEmailBody().getContentType().startsWith( "multipart/mixed" ) );
+		assertTrue( ( ( MultiPartEmail ) message ).isBoolHasAttachments() );
+		MimeBodyPart bodyPart = ( MimeBodyPart ) message.getEmailBody().getBodyPart( 0 );
+		assertEquals( "text/plain; charset=utf-8", bodyPart.getContentType().toString() );
+		assertEquals( "Rechnung \u00e4\u00f6\u00fc", StringCaster.cast( bodyPart.getContent() ).trim() );
 	}
 
 	@DisplayName( "It can test a basic sending of mail with a mime attachment" )
@@ -343,9 +419,13 @@ public class MailTest {
 		    context, BoxSourceType.BOXTEMPLATE );
 		assertTrue( variables.get( messageId ) instanceof String );
 		assertTrue( variables.get( messageVar ) instanceof Email );
-		Email			message	= ( Email ) variables.get( messageVar );
-		MimeMultipart	part1	= ( MimeMultipart ) message.getEmailBody().getBodyPart( 0 ).getContent();
-		assertEquals( "Here's an image!", part1.getBodyPart( 0 ).getContent().toString().trim() );
+		Email message = ( Email ) variables.get( messageVar );
+		assertTrue( message.getEmailBody() instanceof MimeMultipart );
+		assertTrue( message.getEmailBody().getContentType().startsWith( "multipart/mixed" ) );
+		// Body ( text ) + attachment → the body is the first part of the mixed container.
+		MimeBodyPart bodyPart = ( MimeBodyPart ) message.getEmailBody().getBodyPart( 0 );
+		assertEquals( "Here's an image!", bodyPart.getContent().toString().trim() );
+		assertEquals( 2, message.getEmailBody().getCount() );
 		assertTrue( ( ( MultiPartEmail ) message ).isBoolHasAttachments() );
 		assertEquals( "jclausen@ortussolutions.com", message.getToAddresses().get( 0 ).toString() );
 		assertEquals( "jclausen@ortussolutions.com", message.getFromAddress().toString() );
@@ -377,9 +457,11 @@ public class MailTest {
 		    context, BoxSourceType.BOXTEMPLATE );
 		assertTrue( variables.get( messageId ) instanceof String );
 		assertTrue( variables.get( messageVar ) instanceof Email );
-		Email			message	= ( Email ) variables.get( messageVar );
-		MimeMultipart	part1	= ( MimeMultipart ) message.getEmailBody().getBodyPart( 0 ).getContent();
-		assertEquals( "Here's an image!", part1.getBodyPart( 0 ).getContent().toString().trim() );
+		Email message = ( Email ) variables.get( messageVar );
+		assertTrue( message.getEmailBody().getContentType().startsWith( "multipart/mixed" ) );
+		MimeBodyPart bodyPart = ( MimeBodyPart ) message.getEmailBody().getBodyPart( 0 );
+		assertEquals( "Here's an image!", bodyPart.getContent().toString().trim() );
+		assertEquals( 2, message.getEmailBody().getCount() );
 		assertTrue( ( ( MultiPartEmail ) message ).isBoolHasAttachments() );
 		assertEquals( "jclausen@ortussolutions.com", message.getToAddresses().get( 0 ).toString() );
 		assertEquals( "jclausen@ortussolutions.com", message.getFromAddress().toString() );
@@ -420,12 +502,14 @@ public class MailTest {
 		Email message = ( Email ) variables.get( messageVar );
 		assertTrue( message.getEmailBody() instanceof MimeMultipart );
 		assertTrue( ( ( MultiPartEmail ) message ).isBoolHasAttachments() );
-		MimeMultipart	part1	= ( MimeMultipart ) message.getEmailBody().getBodyPart( 0 ).getContent();
-		MimeMultipart	part2	= ( MimeMultipart ) message.getEmailBody().getBodyPart( 1 ).getContent();
-		assertEquals( "Hello mail!", part1.getBodyPart( 0 ).getContent().toString().trim() );
-		assertEquals( "text/plain;charset=utf-8", part1.getBodyPart( 0 ).getContentType().toString() );
-		assertEquals( "<h1>Hello mail!</h1>", part2.getBodyPart( 0 ).getContent().toString().trim() );
-		assertEquals( "text/html;charset=utf-8", part2.getBodyPart( 0 ).getContentType().toString() );
+		// Body + attachment → single multipart/mixed with the body part first.
+		assertTrue( message.getEmailBody().getContentType().startsWith( "multipart/mixed" ) );
+		MimeMultipart alt = ( MimeMultipart ) message.getEmailBody().getBodyPart( 0 ).getContent();
+		assertTrue( alt.getContentType().toString().toLowerCase().startsWith( "multipart/alternative" ) );
+		assertEquals( "Hello mail!", alt.getBodyPart( 0 ).getContent().toString().trim() );
+		assertEquals( "text/plain; charset=utf-8", alt.getBodyPart( 0 ).getContentType().toString() );
+		assertEquals( "<h1>Hello mail!</h1>", alt.getBodyPart( 1 ).getContent().toString().trim() );
+		assertEquals( "text/html; charset=utf-8", alt.getBodyPart( 1 ).getContentType().toString() );
 		assertEquals( "Mail Test", StringCaster.cast( message.getSubject() ).trim() );
 		assertEquals( "jclausen@ortussolutions.com", message.getToAddresses().get( 0 ).toString() );
 		assertEquals( "jclausen@ortussolutions.com", message.getFromAddress().toString() );
@@ -462,13 +546,15 @@ public class MailTest {
 		assertTrue( variables.get( messageVar ) instanceof Email );
 		Email message = ( Email ) variables.get( messageVar );
 		assertTrue( message.getEmailBody() instanceof MimeMultipart );
-		MimeMultipart	part1	= ( MimeMultipart ) message.getEmailBody().getBodyPart( 0 ).getContent();
-		MimeMultipart	part2	= ( MimeMultipart ) message.getEmailBody().getBodyPart( 1 ).getContent();
-		assertEquals( "Hello mail!", part1.getBodyPart( 0 ).getContent().toString().trim() );
-		assertEquals( "text/plain;charset=utf-8", part1.getBodyPart( 0 ).getContentType().toString() );
-		assertEquals( "<h1>Hello mail!</h1>", part2.getBodyPart( 0 ).getContent().toString().trim() );
-		assertEquals( "text/html;charset=utf-8", part2.getBodyPart( 0 ).getContentType().toString() );
-		assertEquals( "image/jpeg; name=foo.jpg", message.getEmailBody().getBodyPart( 2 ).getContentType().toString() );
+		assertTrue( message.getEmailBody().getContentType().startsWith( "multipart/mixed" ) );
+		MimeMultipart alt = ( MimeMultipart ) message.getEmailBody().getBodyPart( 0 ).getContent();
+		assertTrue( alt.getContentType().toString().toLowerCase().startsWith( "multipart/alternative" ) );
+		assertEquals( "Hello mail!", alt.getBodyPart( 0 ).getContent().toString().trim() );
+		assertEquals( "text/plain; charset=utf-8", alt.getBodyPart( 0 ).getContentType().toString() );
+		assertEquals( "<h1>Hello mail!</h1>", alt.getBodyPart( 1 ).getContent().toString().trim() );
+		assertEquals( "text/html; charset=utf-8", alt.getBodyPart( 1 ).getContentType().toString() );
+		assertEquals( 2, message.getEmailBody().getCount() );
+		assertEquals( "image/jpeg; name=foo.jpg", message.getEmailBody().getBodyPart( 1 ).getContentType().toString() );
 		assertEquals( "Mail Test", StringCaster.cast( message.getSubject() ).trim() );
 		assertEquals( "jclausen@ortussolutions.com", message.getToAddresses().get( 0 ).toString() );
 		assertEquals( "jclausen@ortussolutions.com", message.getFromAddress().toString() );

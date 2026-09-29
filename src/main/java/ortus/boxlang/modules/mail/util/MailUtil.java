@@ -404,8 +404,6 @@ public class MailUtil {
 			}
 		}
 		// Process the content parts ( e.g. text & html )
-		boolean	hasFileParams	= mailParams.stream().map( StructCaster::cast )
-		    .filter( param -> param.get( Key._NAME ) == null && param.get( Key.file ) != null ).count() > 0;
 		boolean	hasContentParts	= mailParts.size() > 0
 		    &&
 		    mailParts.stream().map( StructCaster::cast )
@@ -432,24 +430,25 @@ public class MailUtil {
 			return;
 		}
 
+		// Plain (non-signed/encrypted) mails are assembled with the correct MIME structure:
+		// text + html parts are grouped into one multipart/alternative (wrapped in a single
+		// multipart/mixed only when attachments are present), and string bodies are encoded
+		// using the declared charset.
+		if ( !encrypt && !sign ) {
+			buildAndApplyContent( message, buffer, attributes, mailParams, mailParts );
+			return;
+		}
+
+		// Signing/encryption keep the legacy per-part assembly, whose structure the SMIME
+		// handling at the bottom of this method relies upon.
 		if ( !hasContentParts ) {
-			if ( !encrypt && !sign && !hasFileParams ) {
-				message.setContent( buffer.toString() );
-				message.setContentType( "text/plain" );
-			} else {
-				message.setContentType( "multipart/mixed" );
-				appendMessagePart( message, buffer.toString(), StringCaster.cast( attributes.getOrDefault( Key.type, "text/plain" ) ),
-				    attributes.getAsString( Key.charset ), attributes );
-			}
+			message.setContentType( "multipart/mixed" );
+			appendMessagePart( message, buffer.toString(), resolveContentType( attributes.getAsString( Key.type ) ),
+			    attributes.getAsString( Key.charset ), attributes );
 		} else {
 			mailParts.stream().map( StructCaster::cast )
 			    .forEach( part -> {
-				    String mimeType = part.getAsString( Key.type ).toLowerCase();
-				    if ( mimeType.contains( "html" ) ) {
-					    mimeType = "text/html";
-				    } else if ( mimeType.contains( "text" ) ) {
-					    mimeType = "text/plain";
-				    }
+				    String mimeType = resolveContentType( part.getAsString( Key.type ) );
 				    appendMessagePart( message, part.get( Key.result ), mimeType, attributes.getAsString( Key.charset ), attributes );
 			    } );
 
@@ -544,7 +543,7 @@ public class MailUtil {
 			MimeMultipart	mimePart	= new MimeMultipart();
 			MimeBodyPart	bodyPart	= new MimeBodyPart();
 			if ( content instanceof String ) {
-				bodyPart.setContent( StringCaster.cast( content ), mimeType + ";charset=" + charset );
+				applyTextContent( bodyPart, StringCaster.cast( content ), mimeType, charset );
 			} else {
 				bodyPart.setDisposition( attributes.get( MailKeys.disposition ) == null ? Part.INLINE : attributes.getAsString( MailKeys.disposition ) );
 				if ( attributes.containsKey( MailKeys.fileName ) ) {
@@ -570,6 +569,47 @@ public class MailUtil {
 		} catch ( EmailException e ) {
 			throw new BoxRuntimeException( "An error occurred while attempting to attach content of type " + mimeType + " to the email", e );
 		}
+	}
+
+	/**
+	 * Sets the given text content on a body part using the charset-correct
+	 * {@link MimeBodyPart#setText(String, String, String)} API. This preserves both the
+	 * declared charset ( so the bytes are actually UTF-8 when charset is UTF-8 ) and the text
+	 * subtype ( text/plain vs text/html ), unlike {@code setContent(String, type)} which lets
+	 * Jakarta Mail re-derive the content type from the DataHandler on saveChanges.
+	 *
+	 * @param bodyPart the part to set content on
+	 * @param content  the text content
+	 * @param mimeType the resolved mime type ( text/plain or text/html )
+	 * @param charset  the charset to encode with
+	 *
+	 * @throws MessagingException if the content cannot be set
+	 */
+	private static void applyTextContent( MimeBodyPart bodyPart, String content, String mimeType, String charset ) throws MessagingException {
+		if ( mimeType != null && mimeType.toLowerCase().contains( "html" ) ) {
+			bodyPart.setText( content, charset, "html" );
+		} else {
+			bodyPart.setText( content, charset );
+		}
+	}
+
+	/**
+	 * Creates a text {@link MimeBodyPart} with the given content, mime type and charset.
+	 *
+	 * @param content  the text content
+	 * @param mimeType the resolved mime type ( text/plain or text/html )
+	 * @param charset  the charset to encode with
+	 *
+	 * @return the constructed body part
+	 */
+	private static MimeBodyPart createTextBodyPart( String content, String mimeType, String charset ) {
+		MimeBodyPart bodyPart = new MimeBodyPart();
+		try {
+			applyTextContent( bodyPart, content, mimeType, charset );
+		} catch ( MessagingException e ) {
+			throw new BoxRuntimeException( "An error occurred while setting the content of type " + mimeType + " on the email", e );
+		}
+		return bodyPart;
 	}
 
 	/**
@@ -699,17 +739,17 @@ public class MailUtil {
 					IStruct			part		= StructCaster.cast( partObj );
 					String			mimeType	= resolveContentType( part.getAsString( Key.type ) );
 					MimeBodyPart	altPart		= new MimeBodyPart();
-					altPart.setContent( StringCaster.cast( part.get( Key.result ) ), mimeType + ";charset=" + charset );
+					applyTextContent( altPart, StringCaster.cast( part.get( Key.result ) ), mimeType, charset );
 					alternative.addBodyPart( altPart );
 				}
 				rootPart.setContent( alternative );
 			} else if ( contentParts.size() == 1 ) {
 				IStruct	part		= StructCaster.cast( contentParts.get( 0 ) );
 				String	mimeType	= resolveContentType( part.getAsString( Key.type ) );
-				rootPart.setContent( StringCaster.cast( part.get( Key.result ) ), mimeType + ";charset=" + charset );
+				applyTextContent( rootPart, StringCaster.cast( part.get( Key.result ) ), mimeType, charset );
 			} else {
 				String mimeType = resolveContentType( StringCaster.cast( attributes.getOrDefault( Key.type, "text/html" ) ) );
-				rootPart.setContent( buffer.toString(), mimeType + ";charset=" + charset );
+				applyTextContent( rootPart, buffer.toString(), mimeType, charset );
 			}
 			related.addBodyPart( rootPart );
 
@@ -744,6 +784,87 @@ public class MailUtil {
 			return container;
 		} catch ( MessagingException e ) {
 			throw new BoxRuntimeException( "An error occurred while assembling the related content: " + e.getMessage(), e );
+		}
+	}
+
+	/**
+	 * Assembles the body and attachments of a plain ( non-signed/non-encrypted ) multipart email
+	 * into the correct MIME structure and applies it to the message.
+	 * <ul>
+	 * <li>Two or more text/html content parts are grouped into a single {@code multipart/alternative}.</li>
+	 * <li>A single content part or plain body is emitted as a single text part.</li>
+	 * <li>When attachments are present, the body ( and any alternative group ) is wrapped in one
+	 * {@code multipart/mixed} container together with the attachments.</li>
+	 * </ul>
+	 *
+	 * @param message    the multipart email message
+	 * @param buffer     the plain body buffer
+	 * @param attributes the mail attributes
+	 * @param mailParams the mail params ( attachments )
+	 * @param mailParts  the mail parts ( text/html content )
+	 */
+	private static void buildAndApplyContent( MultiPartEmail message, StringBuffer buffer, IStruct attributes, Array mailParams, Array mailParts ) {
+		String charset = attributes.getAsString( Key.charset );
+		try {
+			Array			contentParts	= mailParts.stream().map( StructCaster::cast )
+			    .filter( part -> {
+												    String type = part.getAsString( Key.type ).toLowerCase();
+												    return type.contains( "text" ) || type.contains( "html" );
+											    } )
+			    .collect( BLCollector.toArray() );
+
+			Array			attachments		= mailParams.stream().map( StructCaster::cast )
+			    .filter( param -> param.get( Key._NAME ) == null && param.get( Key.file ) != null )
+			    .collect( BLCollector.toArray() );
+
+			// Determine the body node: a single text part or a multipart/alternative group.
+			MimeMultipart	alternative		= null;
+			String			singleContent	= null;
+			String			singleMimeType	= null;
+
+			if ( contentParts.size() > 1 ) {
+				alternative = new MimeMultipart( "alternative" );
+				for ( Object partObj : contentParts ) {
+					IStruct	part		= StructCaster.cast( partObj );
+					String	mimeType	= resolveContentType( part.getAsString( Key.type ) );
+					alternative.addBodyPart( createTextBodyPart( StringCaster.cast( part.get( Key.result ) ), mimeType, charset ) );
+				}
+			} else if ( contentParts.size() == 1 ) {
+				IStruct part = StructCaster.cast( contentParts.get( 0 ) );
+				singleMimeType	= resolveContentType( part.getAsString( Key.type ) );
+				singleContent	= StringCaster.cast( part.get( Key.result ) );
+			} else {
+				singleMimeType	= resolveContentType( attributes.getAsString( Key.type ) );
+				singleContent	= buffer.toString();
+			}
+
+			if ( attachments.isEmpty() ) {
+				if ( alternative != null ) {
+					applyContent( message, attributes, alternative );
+				} else {
+					// Single-part message ( no attachments, no alternative group ).
+					message.setCharset( charset );
+					message.setContent( singleContent, singleMimeType );
+				}
+				return;
+			}
+
+			// Body plus attachments → single multipart/mixed container.
+			MimeMultipart mixed = new MimeMultipart( "mixed" );
+			if ( alternative != null ) {
+				MimeBodyPart alternativePart = new MimeBodyPart();
+				alternativePart.setContent( alternative );
+				mixed.addBodyPart( alternativePart );
+			} else {
+				mixed.addBodyPart( createTextBodyPart( singleContent, singleMimeType, charset ) );
+			}
+			for ( Object paramObj : attachments ) {
+				mixed.addBodyPart( createAttachmentBodyPart( StructCaster.cast( paramObj ), charset ) );
+			}
+			message.setBoolHasAttachments( true );
+			applyContent( message, attributes, mixed );
+		} catch ( MessagingException e ) {
+			throw new BoxRuntimeException( "An error occurred while assembling the message content: " + e.getMessage(), e );
 		}
 	}
 
