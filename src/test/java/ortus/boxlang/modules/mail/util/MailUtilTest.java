@@ -560,6 +560,50 @@ public class MailUtilTest {
 		assertEquals( "多语言", deserializedEmail.getHeaders().get( "X-Language" ) );
 	}
 
+	@DisplayName( "It keeps the subtype and charset of unsaved text parts across the spool round trip (BL-2708)" )
+	@Test
+	public void testUnsavedTextPartsSurviveSpoolRoundTrip() throws Exception {
+		// Build the parts exactly as buildAndApplyContent() does: setText( content, charset, subtype )
+		// on a part that has NOT been saved yet. Until saveChanges() runs such a part carries no
+		// Content-Type header, so a serializer that reads getContentType() sees "text/plain".
+		String			umlauts		= "Grüße äöü";
+		MimeMultipart	alternative	= new MimeMultipart( "alternative" );
+		MimeBodyPart	textPart	= new MimeBodyPart();
+		textPart.setText( umlauts, "UTF-8" );
+		alternative.addBodyPart( textPart );
+		MimeBodyPart htmlPart = new MimeBodyPart();
+		htmlPart.setText( "<p>" + umlauts + "</p>", "UTF-8", "html" );
+		alternative.addBodyPart( htmlPart );
+
+		MultiPartEmail originalEmail = new MultiPartEmail();
+		originalEmail.setFrom( "sender@example.com" );
+		originalEmail.addTo( "recipient@example.com" );
+		originalEmail.setSubject( "Spool round trip" );
+		originalEmail.setCharset( "UTF-8" );
+		originalEmail.setContent( alternative );
+
+		IStruct	serializedData	= MailUtil.emailToSerializableStruct( originalEmail, Struct.of( Key.charset, "UTF-8" ) );
+		Array	parts			= serializedData.getAsArray( MailKeys.emailBody );
+		assertEquals( 2, parts.size() );
+		assertTrue( ( ( IStruct ) parts.get( 0 ) ).getAsString( MailKeys.partContentType ).toLowerCase().startsWith( "text/plain" ) );
+		assertTrue( ( ( IStruct ) parts.get( 1 ) ).getAsString( MailKeys.partContentType ).toLowerCase().startsWith( "text/html" ) );
+
+		// Deserialize, then render the message the way the spool worker sends it
+		MultiPartEmail deserializedEmail = ( MultiPartEmail ) MailUtil.emailFromSerializableStruct( serializedData );
+		deserializedEmail.setHostName( "localhost" );
+		deserializedEmail.buildMimeMessage();
+		java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+		deserializedEmail.getMimeMessage().writeTo( out );
+		String rendered = out.toString( StandardCharsets.ISO_8859_1 );
+
+		assertTrue( rendered.contains( "Content-Type: multipart/alternative" ), rendered );
+		assertTrue( rendered.contains( "Content-Type: text/plain; charset=UTF-8" ), rendered );
+		assertTrue( rendered.contains( "Content-Type: text/html; charset=UTF-8" ), rendered );
+		// bytes are UTF-8 ( ü = C3 BC ), not ISO-8859-1 ( FC )
+		assertTrue( rendered.contains( "=C3=BC" ), rendered );
+		assertFalse( rendered.contains( "=FC" ), rendered );
+	}
+
 	@DisplayName( "It can serialize and deserialize multipart email with empty and null values" )
 	@Test
 	public void testMultiPartEmailWithNullValuesSerialization() throws EmailException {

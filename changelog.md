@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- [BL-2708](https://ortussolutions.atlassian.net/browse/BL-2708) - Spooled mails lost the subtype and charset of their text parts (html delivered as `text/plain`, UTF-8 declared but ISO-8859-1 encoded) and text attachments were re-encoded; the spool now keeps the content type of unsaved parts and the raw bytes of attachments
+
 ## [1.4.14] - 2026-09-21
 
 ### Added

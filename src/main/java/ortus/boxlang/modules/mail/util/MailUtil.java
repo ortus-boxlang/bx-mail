@@ -43,6 +43,7 @@ import jakarta.activation.MailcapCommandMap;
 import jakarta.mail.MessagingException;
 import jakarta.mail.Multipart;
 import jakarta.mail.Part;
+import jakarta.mail.internet.ContentType;
 import jakarta.mail.internet.MimeBodyPart;
 import jakarta.mail.internet.MimeMultipart;
 import jakarta.mail.util.ByteArrayDataSource;
@@ -590,6 +591,39 @@ public class MailUtil {
 			bodyPart.setText( content, charset, "html" );
 		} else {
 			bodyPart.setText( content, charset );
+		}
+	}
+
+	/**
+	 * Restores the text content of a spooled body part from its serialized content type.
+	 * {@code text/*} parts go through {@link MimeBodyPart#setText(String, String, String)} with
+	 * the stored subtype and charset, so the bytes are encoded with the declared charset and the
+	 * subtype ( html, plain, calendar, ... ) survives the spool round trip - exactly as
+	 * {@link #applyTextContent} does when the message is first built. Any other type is applied
+	 * verbatim via {@code setContent(String, type)}.
+	 *
+	 * @param bodyPart    the part to set content on
+	 * @param content     the text content
+	 * @param contentType the serialized content type ( may include parameters ), or null
+	 *
+	 * @throws MessagingException if the content cannot be set
+	 */
+	private static void applySerializedTextContent( MimeBodyPart bodyPart, String content, String contentType ) throws MessagingException {
+		if ( contentType == null ) {
+			bodyPart.setText( content );
+			return;
+		}
+		ContentType parsed;
+		try {
+			parsed = new ContentType( contentType );
+		} catch ( jakarta.mail.internet.ParseException e ) {
+			bodyPart.setContent( content, contentType );
+			return;
+		}
+		if ( parsed.match( "text/*" ) ) {
+			bodyPart.setText( content, parsed.getParameter( "charset" ), parsed.getSubType() );
+		} else {
+			bodyPart.setContent( content, contentType );
 		}
 	}
 
@@ -1334,8 +1368,20 @@ public class MailUtil {
 				data.put( MailKeys.partEncoding, encoding );
 			}
 
-			// Full content-type string (includes parameters such as charset)
-			data.put( MailKeys.partContentType, part.getContentType() );
+			// Full content-type string (includes parameters such as charset). Spooled parts are
+			// serialized BEFORE the message is saved, and until saveChanges() runs a part built with
+			// setText()/setContent() carries no Content-Type header (setDataHandler() invalidates
+			// it) - getContentType() then falls back to "text/plain" and the subtype and charset
+			// are lost. The DataHandler still knows the type that updateHeaders() will emit, so
+			// prefer it whenever the header has not been written yet.
+			String contentType = part.getHeader( "Content-Type", null );
+			if ( contentType == null && part.getDataHandler() != null ) {
+				contentType = part.getDataHandler().getContentType();
+			}
+			if ( contentType == null ) {
+				contentType = part.getContentType();
+			}
+			data.put( MailKeys.partContentType, contentType );
 
 			// Capture remaining headers not already represented explicitly
 			IStruct	headers		= new Struct();
@@ -1361,10 +1407,14 @@ public class MailUtil {
 				data.put( MailKeys.partType, "multipart" );
 				data.put( MailKeys.partContent, serializeMultipart( nestedMultipart ) );
 				data.put( MailKeys.partSubtype, multipartSubType( nestedMultipart ) );
-			} else if ( content instanceof String stringContent ) {
+			} else if ( content instanceof String stringContent && fileName == null && !Part.ATTACHMENT.equalsIgnoreCase( disposition ) ) {
+				// A text BODY part: keep the string, it is re-encoded with its charset on deserialization
 				data.put( MailKeys.partType, "text" );
 				data.put( MailKeys.partContent, stringContent );
 			} else {
+				// Attachments ( incl. text/* files ) and every non-string content: keep the raw bytes.
+				// A text/* attachment must not be decoded to a string here - the text handler decodes
+				// it with the default charset, which is not necessarily the file's encoding.
 				data.put( MailKeys.partType, "binary" );
 				try ( InputStream in = part.getInputStream() ) {
 					data.put( MailKeys.partContent, in.readAllBytes() );
@@ -1454,11 +1504,7 @@ public class MailUtil {
 				// reject byte[] content for types such as text/plain).
 				bodyPart.setDataHandler( new DataHandler( new ByteArrayDataSource( bytes, baseType.trim() ) ) );
 			} else {
-				if ( contentType != null ) {
-					bodyPart.setContent( StringCaster.cast( content ), contentType );
-				} else {
-					bodyPart.setText( StringCaster.cast( content ) );
-				}
+				applySerializedTextContent( bodyPart, StringCaster.cast( content ), contentType );
 			}
 
 			// Reapply metadata
