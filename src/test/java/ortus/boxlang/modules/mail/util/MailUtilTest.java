@@ -560,6 +560,102 @@ public class MailUtilTest {
 		assertEquals( "多语言", deserializedEmail.getHeaders().get( "X-Language" ) );
 	}
 
+	@DisplayName( "It keeps the subtype and charset of unsaved text parts across the spool round trip (BL-2708)" )
+	@Test
+	public void testUnsavedTextPartsSurviveSpoolRoundTrip() throws Exception {
+		// Build the parts exactly as buildAndApplyContent() does: setText( content, charset, subtype )
+		// on a part that has NOT been saved yet. Until saveChanges() runs such a part carries no
+		// Content-Type header, so a serializer that reads getContentType() sees "text/plain".
+		String			umlauts		= "Grüße äöü";
+		MimeMultipart	alternative	= new MimeMultipart( "alternative" );
+		MimeBodyPart	textPart	= new MimeBodyPart();
+		textPart.setText( umlauts, "UTF-8" );
+		alternative.addBodyPart( textPart );
+		MimeBodyPart htmlPart = new MimeBodyPart();
+		htmlPart.setText( "<p>" + umlauts + "</p>", "UTF-8", "html" );
+		alternative.addBodyPart( htmlPart );
+
+		MultiPartEmail originalEmail = new MultiPartEmail();
+		originalEmail.setFrom( "sender@example.com" );
+		originalEmail.addTo( "recipient@example.com" );
+		originalEmail.setSubject( "Spool round trip" );
+		originalEmail.setCharset( "UTF-8" );
+		originalEmail.setContent( alternative );
+
+		IStruct	serializedData	= MailUtil.emailToSerializableStruct( originalEmail, Struct.of( Key.charset, "UTF-8" ) );
+		Array	parts			= serializedData.getAsArray( MailKeys.emailBody );
+		assertEquals( 2, parts.size() );
+		assertTrue( ( ( IStruct ) parts.get( 0 ) ).getAsString( MailKeys.partContentType ).toLowerCase().startsWith( "text/plain" ) );
+		assertTrue( ( ( IStruct ) parts.get( 1 ) ).getAsString( MailKeys.partContentType ).toLowerCase().startsWith( "text/html" ) );
+
+		// Deserialize, then render the message the way the spool worker sends it
+		MultiPartEmail deserializedEmail = ( MultiPartEmail ) MailUtil.emailFromSerializableStruct( serializedData );
+		deserializedEmail.setHostName( "localhost" );
+		deserializedEmail.buildMimeMessage();
+		java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+		deserializedEmail.getMimeMessage().writeTo( out );
+		String rendered = out.toString( StandardCharsets.ISO_8859_1 );
+
+		assertTrue( rendered.contains( "Content-Type: multipart/alternative" ), rendered );
+		assertTrue( rendered.contains( "Content-Type: text/plain; charset=UTF-8" ), rendered );
+		assertTrue( rendered.contains( "Content-Type: text/html; charset=UTF-8" ), rendered );
+		// bytes are UTF-8 ( ü = C3 BC ), not ISO-8859-1 ( FC )
+		assertTrue( rendered.contains( "=C3=BC" ), rendered );
+		assertFalse( rendered.contains( "=FC" ), rendered );
+	}
+
+	@DisplayName( "It keeps Content-Type parameters of text parts and text attachments across the spool round trip (BL-2708)" )
+	@Test
+	public void testContentTypeParametersSurviveSpoolRoundTrip() throws Exception {
+		MimeMultipart	mixed		= new MimeMultipart( "mixed" );
+
+		MimeBodyPart	calendar	= new MimeBodyPart();
+		calendar.setText( "BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nEND:VCALENDAR", "UTF-8", "calendar" );
+		calendar.setHeader( "Content-Type", "text/calendar; charset=UTF-8; method=REQUEST" );
+		mixed.addBodyPart( calendar );
+
+		MimeBodyPart flowed = new MimeBodyPart();
+		flowed.setText( "Flowed text äöü", "UTF-8" );
+		flowed.setHeader( "Content-Type", "text/plain; charset=UTF-8; format=flowed" );
+		mixed.addBodyPart( flowed );
+
+		// A text attachment whose bytes are ISO-8859-1: must travel as raw bytes, with its charset
+		byte[]			latin1		= "Anhang äöü".getBytes( StandardCharsets.ISO_8859_1 );
+		MimeBodyPart	attachment	= new MimeBodyPart();
+		attachment
+		    .setDataHandler( new jakarta.activation.DataHandler( new jakarta.mail.util.ByteArrayDataSource( latin1, "text/plain; charset=ISO-8859-1" ) ) );
+		attachment.setDisposition( jakarta.mail.Part.ATTACHMENT );
+		attachment.setFileName( "notes.txt" );
+		mixed.addBodyPart( attachment );
+
+		MultiPartEmail originalEmail = new MultiPartEmail();
+		originalEmail.setFrom( "sender@example.com" );
+		originalEmail.addTo( "recipient@example.com" );
+		originalEmail.setSubject( "Parameters round trip" );
+		originalEmail.setCharset( "UTF-8" );
+		originalEmail.setContent( mixed );
+
+		IStruct	serializedData	= MailUtil.emailToSerializableStruct( originalEmail, Struct.of( Key.charset, "UTF-8" ) );
+		Array	parts			= serializedData.getAsArray( MailKeys.emailBody );
+		assertEquals( 3, parts.size() );
+		assertEquals( "text", ( ( IStruct ) parts.get( 0 ) ).getAsString( MailKeys.partType ) );
+		assertEquals( "binary", ( ( IStruct ) parts.get( 2 ) ).getAsString( MailKeys.partType ) );
+		assertArrayEquals( latin1, ( byte[] ) ( ( IStruct ) parts.get( 2 ) ).get( MailKeys.partContent ) );
+
+		MultiPartEmail deserializedEmail = ( MultiPartEmail ) MailUtil.emailFromSerializableStruct( serializedData );
+		deserializedEmail.setHostName( "localhost" );
+		deserializedEmail.buildMimeMessage();
+		java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+		deserializedEmail.getMimeMessage().writeTo( out );
+		String rendered = out.toString( StandardCharsets.ISO_8859_1 );
+
+		assertTrue( rendered.contains( "Content-Type: text/calendar; charset=UTF-8; method=REQUEST" ), rendered );
+		assertTrue( rendered.contains( "Content-Type: text/plain; charset=UTF-8; format=flowed" ), rendered );
+		assertTrue( rendered.contains( "=C3=A4=C3=B6=C3=BC" ), rendered ); // flowed body encoded UTF-8
+		assertTrue( rendered.contains( "Content-Type: text/plain; charset=ISO-8859-1; name=notes.txt" ), rendered );
+		assertTrue( rendered.contains( "Anhang =E4=F6=FC" ), rendered ); // attachment bytes untouched
+	}
+
 	@DisplayName( "It can serialize and deserialize multipart email with empty and null values" )
 	@Test
 	public void testMultiPartEmailWithNullValuesSerialization() throws EmailException {
