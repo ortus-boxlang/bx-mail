@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.15] - 2026-10-01
+
 ### Fixed
 
 - [BL-2708](https://ortussolutions.atlassian.net/browse/BL-2708) - Spooled mails lost the subtype and charset of their text parts (html delivered as `text/plain`, UTF-8 declared but ISO-8859-1 encoded) and text attachments were re-encoded; the spool now keeps the content type of unsaved parts and the raw bytes of attachments
@@ -173,7 +175,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - First iteration of this module
 
-[unreleased]: https://github.com/ortus-boxlang/bx-mail/compare/v1.4.14...HEAD
+[unreleased]: https://github.com/ortus-boxlang/bx-mail/compare/v1.4.15...HEAD
+[1.4.15]: https://github.com/ortus-boxlang/bx-mail/compare/v1.4.14...v1.4.15
 [1.4.14]: https://github.com/ortus-boxlang/bx-mail/compare/v1.4.13...v1.4.14
 [1.4.13]: https://github.com/ortus-boxlang/bx-mail/compare/v1.4.12...v1.4.13
 [1.4.12]: https://github.com/ortus-boxlang/bx-mail/compare/v1.4.11...v1.4.12
