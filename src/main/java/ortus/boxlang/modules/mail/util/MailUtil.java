@@ -30,7 +30,6 @@ import java.util.regex.Pattern;
 
 import org.apache.commons.mail2.core.EmailException;
 import org.apache.commons.mail2.jakarta.Email;
-import org.apache.commons.mail2.jakarta.EmailAttachment;
 import org.apache.commons.mail2.jakarta.MultiPartEmail;
 import org.apache.commons.mail2.jakarta.SimpleEmail;
 import org.apache.commons.mail2.jakarta.util.IDNEmailAddressConverter;
@@ -461,34 +460,16 @@ public class MailUtil {
 		    .forEach( param -> {
 			    Path filePath = Path.of( param.getAsString( Key.file ) );
 			    try {
-				    if ( !attributes.getAsBoolean( MailKeys.sign ) && !attributes.getAsBoolean( MailKeys.encrypt ) ) {
-					    // Simple attachment - no encryption or signing
-					    EmailAttachment attachment = new EmailAttachment();
-					    attachment.setPath( filePath.toAbsolutePath().toString() );
-					    attachment.setDisposition( param.get( MailKeys.disposition ) != null ? param.getAsString( MailKeys.disposition ) : Part.ATTACHMENT );
-					    if ( param.containsKey( MailKeys.fileName ) ) {
-						    attachment.setName( param.getAsString( MailKeys.fileName ) );
-					    }
-					    if ( param.get( Key.description ) != null ) {
-						    attachment.setDescription( param.getAsString( Key.description ) );
-					    }
-					    message.attach( attachment );
-				    } else {
-					    // Mime attachments for signed or encrypted content
-					    attributes.keySet().stream()
-					        .forEach( key -> param.putIfAbsent( key, attributes.get( key ) ) );
-					    appendMessagePart(
-					        message,
-					        FileSystemUtil.read( param.getAsString( Key.file ) ),
-					        Files.probeContentType( filePath ),
-					        attributes.getAsString( Key.charset ),
-					        param
-					    );
-				    }
-
-			    } catch ( EmailException e ) {
-				    throw new BoxRuntimeException(
-				        "An exception occured while attempting to attach the file " + filePath.toAbsolutePath().toString() + ". " + e.getMessage(), e );
+				    // Never use MultiPartEmail.attach(): it RFC 2047-encodes the name, which corrupts long non-ASCII names (BL-2742)
+				    attributes.keySet().stream()
+				        .forEach( key -> param.putIfAbsent( key, attributes.get( key ) ) );
+				    appendMessagePart(
+				        message,
+				        FileSystemUtil.read( param.getAsString( Key.file ) ),
+				        Files.probeContentType( filePath ),
+				        attributes.getAsString( Key.charset ),
+				        param
+				    );
 			    } catch ( IOException e ) {
 				    throw new BoxIOException( e );
 			    }
@@ -1551,7 +1532,12 @@ public class MailUtil {
 				bodyPart.setDisposition( data.getAsString( MailKeys.disposition ) );
 			}
 			if ( data.containsKey( MailKeys.fileName ) && data.get( MailKeys.fileName ) != null ) {
-				bodyPart.setFileName( data.getAsString( MailKeys.fileName ) );
+				String fileName = data.getAsString( MailKeys.fileName );
+				// Entries spooled by <= 1.4.14 hold an RFC 2047 encoded-word name; decode it so Jakarta Mail can apply RFC 2231 (BL-2742)
+				if ( fileName.startsWith( "=?" ) ) {
+					fileName = jakarta.mail.internet.MimeUtility.decodeText( fileName );
+				}
+				bodyPart.setFileName( fileName );
 			}
 			if ( data.containsKey( MailKeys.contentID ) && data.get( MailKeys.contentID ) != null ) {
 				bodyPart.setContentID( data.getAsString( MailKeys.contentID ) );

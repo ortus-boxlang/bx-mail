@@ -1093,6 +1093,88 @@ public class MailUtilTest {
 		assertThrows( BoxRuntimeException.class, () -> MailUtil.emailFromSerializableStruct( legacyMessage ) );
 	}
 
+	private static final String LONG_NON_ASCII_NAME = "2026 08 Collection Report_F1online Bildagentur RM_Mathias Sch\u00e4fer.pdf";
+
+	@DisplayName( "It sends a long non-ASCII attachment file name as a single RFC 2231 parameter (BL-2742)" )
+	@Test
+	public void testNonAsciiAttachmentFileNameIsRfc2231Encoded() throws Exception {
+		MultiPartEmail email = buildEmailWithAttachment( LONG_NON_ASCII_NAME );
+
+		email.buildMimeMessage();
+		byte[]	wire		= renderMessage( email );
+		String	rendered	= new String( wire, StandardCharsets.ISO_8859_1 );
+
+		assertFalse( rendered.contains( "=?UTF-8?" ), rendered );
+		assertFalse( rendered.matches( "(?s).*filename[0-9]+=.*" ), rendered );
+		assertTrue( rendered.contains( "filename*" ), rendered );
+		assertEquals( LONG_NON_ASCII_NAME, reparsedAttachmentName( wire ) );
+	}
+
+	@DisplayName( "It keeps a long non-ASCII attachment file name across the spool round trip (BL-2742)" )
+	@Test
+	public void testNonAsciiAttachmentFileNameSurvivesSpoolRoundTrip() throws Exception {
+		MultiPartEmail	original	= buildEmailWithAttachment( LONG_NON_ASCII_NAME );
+		IStruct			serialized	= MailUtil.emailToSerializableStruct( original, Struct.of( Key.charset, "UTF-8" ) );
+
+		MultiPartEmail	restored	= ( MultiPartEmail ) MailUtil.emailFromSerializableStruct( serialized );
+		restored.setHostName( "localhost" );
+		restored.buildMimeMessage();
+		byte[] wire = renderMessage( restored );
+
+		assertFalse( new String( wire, StandardCharsets.ISO_8859_1 ).contains( "=?UTF-8?" ) );
+		assertEquals( LONG_NON_ASCII_NAME, reparsedAttachmentName( wire ) );
+	}
+
+	@DisplayName( "It repairs RFC 2047 encoded attachment names found in entries spooled by older versions (BL-2742)" )
+	@Test
+	public void testLegacyEncodedAttachmentFileNameIsRepairedOnDeserialize() throws Exception {
+		IStruct			legacyPart	= Struct.of(
+		    MailKeys.partType, "binary",
+		    MailKeys.partContent, "data".getBytes( StandardCharsets.UTF_8 ),
+		    MailKeys.partContentType, "application/pdf",
+		    MailKeys.disposition, jakarta.mail.Part.ATTACHMENT,
+		    MailKeys.fileName, jakarta.mail.internet.MimeUtility.encodeText( LONG_NON_ASCII_NAME )
+		);
+
+		MimeBodyPart	restored	= MailUtil.deserializeBodyPart( legacyPart );
+
+		assertEquals( LONG_NON_ASCII_NAME, restored.getFileName() );
+	}
+
+	private MultiPartEmail buildEmailWithAttachment( String attachmentName ) throws Exception {
+		Path tempFile = Files.createTempFile( "bx-mail-name-", ".pdf" );
+		Files.write( tempFile, "dummy".getBytes( StandardCharsets.UTF_8 ) );
+		tempFile.toFile().deleteOnExit();
+
+		MimeMultipart	mixed	= new MimeMultipart( "mixed" );
+		MimeBodyPart	body	= new MimeBodyPart();
+		body.setText( "Body", "UTF-8" );
+		mixed.addBodyPart( body );
+		mixed.addBodyPart( MailUtil.createAttachmentBodyPart(
+		    Struct.of( Key.file, tempFile.toString(), MailKeys.fileName, attachmentName ), "UTF-8" ) );
+
+		MultiPartEmail email = new MultiPartEmail();
+		email.setHostName( "localhost" );
+		email.setFrom( "sender@example.com" );
+		email.addTo( "recipient@example.com" );
+		email.setSubject( "Attachment name" );
+		email.setContent( mixed );
+		return email;
+	}
+
+	private byte[] renderMessage( MultiPartEmail email ) throws Exception {
+		java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+		email.getMimeMessage().writeTo( out );
+		return out.toByteArray();
+	}
+
+	private String reparsedAttachmentName( byte[] wire ) throws Exception {
+		jakarta.mail.internet.MimeMessage	parsed	= new jakarta.mail.internet.MimeMessage( Session.getInstance( new Properties() ),
+		    new java.io.ByteArrayInputStream( wire ) );
+		MimeMultipart						content	= ( MimeMultipart ) parsed.getContent();
+		return content.getBodyPart( content.getCount() - 1 ).getFileName();
+	}
+
 	// Helper methods for advanced testing
 	private File createTestAttachment( String filename, String content ) throws IOException {
 		File	tempDir		= new File( System.getProperty( "java.io.tmpdir" ) );

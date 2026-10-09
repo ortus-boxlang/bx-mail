@@ -1,16 +1,19 @@
 package ortus.boxlang.components;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.math.BigInteger;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.KeyPair;
@@ -25,7 +28,10 @@ import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.security.spec.RSAKeyGenParameterSpec;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
+import java.util.Properties;
 import java.util.stream.Collectors;
 
 import org.apache.commons.mail2.jakarta.Email;
@@ -48,7 +54,9 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import jakarta.mail.MessagingException;
+import jakarta.mail.Session;
 import jakarta.mail.internet.MimeBodyPart;
+import jakarta.mail.internet.MimeMessage;
 import jakarta.mail.internet.MimeMultipart;
 import ortus.boxlang.compiler.parser.BoxSourceType;
 import ortus.boxlang.runtime.BoxRuntime;
@@ -644,6 +652,118 @@ public class MailTest {
 		MimeBodyPart imagePart = ( MimeBodyPart ) related.getBodyPart( 1 );
 		assertEquals( "<image1>", imagePart.getContentID() );
 		assertEquals( jakarta.mail.Part.INLINE, imagePart.getDisposition() );
+	}
+
+	static final String LONG_NON_ASCII_NAME = "2026 08 Collection Report_F1online Bildagentur RM_Mathias Sch\u00e4fer.pdf";
+
+	@DisplayName( "It sends a long non-ASCII mailparam fileName as RFC 2231 (BL-2742)" )
+	@Test
+	public void testMailParamNonAsciiFileName() throws Exception {
+		variables.put( Key.of( "testFile" ), testBinaryFile );
+		variables.put( Key.of( "attachmentName" ), LONG_NON_ASCII_NAME );
+		instance.executeSource(
+		    """
+		    <bx:mail
+		        from="jclausen@ortussolutions.com"
+		        to="jclausen@ortussolutions.com"
+		        subject="Attachment name"
+		        server="127.0.0.1"
+		        port="25"
+		        spoolEnable="false"
+		        messageIdentifier="messageId"
+		        messageVariable="messageVar"
+		    >
+		        <bx:mailparam file="#testFile#" fileName="#attachmentName#"/>
+		        Body
+		    </bx:mail>
+		    """,
+		    context, BoxSourceType.BOXTEMPLATE );
+		assertAttachmentNameOnWire( ( Email ) variables.get( messageVar ), LONG_NON_ASCII_NAME );
+	}
+
+	@DisplayName( "It sends a long non-ASCII mimeAttach file name as RFC 2231 (BL-2742)" )
+	@Test
+	public void testMimeAttachNonAsciiFileName() throws Exception {
+		String attachmentPath = tmpDirectory + "/" + LONG_NON_ASCII_NAME;
+		FileSystemUtil.write( attachmentPath, "dummy".getBytes( StandardCharsets.UTF_8 ), true );
+		variables.put( Key.of( "testFile" ), attachmentPath );
+		instance.executeSource(
+		    """
+		    <bx:mail
+		        from="jclausen@ortussolutions.com"
+		        to="jclausen@ortussolutions.com"
+		        subject="Attachment name"
+		        server="127.0.0.1"
+		        port="25"
+		        spoolEnable="false"
+		        mimeAttach="#testFile#"
+		        messageIdentifier="messageId"
+		        messageVariable="messageVar"
+		    >
+		        Body
+		    </bx:mail>
+		    """,
+		    context, BoxSourceType.BOXTEMPLATE );
+		assertAttachmentNameOnWire( ( Email ) variables.get( messageVar ), LONG_NON_ASCII_NAME );
+	}
+
+	@DisplayName( "It sends a long non-ASCII fileName as RFC 2231 in a signed mail (BL-2742)" )
+	@Test
+	public void testSignedMailNonAsciiFileName() throws Exception {
+		variables.put( Key.of( "testFile" ), testBinaryFile );
+		variables.put( Key.of( "attachmentName" ), LONG_NON_ASCII_NAME );
+		variables.put( Key.of( "testKeystore" ), testKeystore );
+		variables.put( Key.of( "keystorePassword" ), testKeystorePassword );
+		variables.put( Key.of( "keystoreAlias" ), testKeystoreAlias );
+		instance.executeSource(
+		    """
+		    <bx:mail
+		        from="jclausen@ortussolutions.com"
+		        to="jclausen@ortussolutions.com"
+		        subject="Attachment name"
+		        server="127.0.0.1"
+		        port="25"
+		        spoolEnable="false"
+		        messageIdentifier="messageId"
+		        messageVariable="messageVar"
+		        sign=true
+		        keystore="#testKeystore#"
+		        keystorePassword="#keystorePassword#"
+		        keyAlias="#keystoreAlias#"
+		        keyPassword="#keystorePassword#"
+		    >
+		        <bx:mailparam file="#testFile#" fileName="#attachmentName#"/>
+		        Body
+		    </bx:mail>
+		    """,
+		    context, BoxSourceType.BOXTEMPLATE );
+		assertAttachmentNameOnWire( ( Email ) variables.get( messageVar ), LONG_NON_ASCII_NAME );
+	}
+
+	private void assertAttachmentNameOnWire( Email message, String expectedName ) throws Exception {
+		ByteArrayOutputStream out = new ByteArrayOutputStream();
+		message.getMimeMessage().writeTo( out );
+		String rendered = out.toString( StandardCharsets.ISO_8859_1 );
+		assertFalse( rendered.contains( "=?UTF-8?" ), rendered );
+		assertFalse( rendered.matches( "(?s).*filename[0-9]+=.*" ), rendered );
+
+		MimeMessage		parsed	= new MimeMessage( Session.getInstance( new Properties() ), new ByteArrayInputStream( out.toByteArray() ) );
+		List<String>	names	= new ArrayList<>();
+		collectFileNames( parsed, names );
+		names.remove( "smime.p7s" );
+		assertEquals( List.of( expectedName ), names, rendered );
+	}
+
+	private void collectFileNames( jakarta.mail.Part part, List<String> names ) throws Exception {
+		if ( part.getFileName() != null ) {
+			names.add( part.getFileName() );
+		}
+		if ( part.isMimeType( "multipart/*" ) ) {
+			MimeMultipart multipart = ( MimeMultipart ) part.getContent();
+			for ( int i = 0; i < multipart.getCount(); i++ ) {
+				collectFileNames( multipart.getBodyPart( i ), names );
+			}
+		}
 	}
 
 	@DisplayName( "It can encrypt HTML mail with an inline image via contentID" )

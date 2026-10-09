@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- [BL-2742](https://ortussolutions.atlassian.net/browse/BL-2742) - Long non-ASCII attachment file names arrived mangled (RFC 2047 inside an RFC 2231 parameter) in 1.4.10 - 1.4.14; the plain path was fixed in 1.4.15, this adds regression tests, removes the last `MultiPartEmail.attach()` call and repairs RFC 2047 names in mails spooled by older versions
+
 ## [1.4.15] - 2026-10-01
 
 ### Fixed
