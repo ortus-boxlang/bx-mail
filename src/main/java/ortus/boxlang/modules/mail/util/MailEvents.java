@@ -54,7 +54,8 @@ import ortus.boxlang.runtime.types.Struct;
  * {@code unreadable}.</li>
  * <li>{@code onMailSpoolRun}: one run of the spool task ended. Data: {@code processed}, {@code failures}, {@code remaining}, {@code ms}.</li>
  * </ul>
- * Every payload also has {@code at} (epoch milliseconds) and {@code nanos} ({@code System.nanoTime()}, to order events inside one JVM).
+ * Every payload also has {@code at} (epoch milliseconds) and {@code nanos} ({@code System.nanoTime()}, to order events inside one JVM). Events that
+ * report {@code ms} also report {@code durationNanos}, the same duration without the rounding.
  * Payloads are plain structs and arrays: no Commons Email object and no password ever leaves the module. They are built only when something
  * listens, and a listener that throws never breaks the mail.
  */

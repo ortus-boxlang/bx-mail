@@ -1864,7 +1864,8 @@ public class MailUtil {
 		if ( !MailEvents.listening( MailEvents.ON_SENT ) ) {
 			return;
 		}
-		long ms = ( System.nanoTime() - startedNanos ) / 1_000_000L;
+		long	elapsed	= System.nanoTime() - startedNanos;
+		long	ms		= elapsed / 1_000_000L;
 		MailEvents.announce( MailEvents.ON_SENT, () -> Struct.of(
 		    "id", id,
 		    "messageId", messageId,
@@ -1872,7 +1873,8 @@ public class MailUtil {
 		    "failover", failover,
 		    "fromSpool", fromSpool,
 		    "server", MailEvents.describeServer( server ),
-		    "ms", ms
+		    "ms", ms,
+		    "durationNanos", elapsed
 		) );
 	}
 
@@ -1880,7 +1882,8 @@ public class MailUtil {
 		if ( !MailEvents.listening( MailEvents.ON_ERROR ) ) {
 			return;
 		}
-		long ms = ( System.nanoTime() - startedNanos ) / 1_000_000L;
+		long	elapsed	= System.nanoTime() - startedNanos;
+		long	ms		= elapsed / 1_000_000L;
 		MailEvents.announce( MailEvents.ON_ERROR, () -> Struct.of(
 		    "id", id,
 		    "attempt", attempt,
@@ -1889,7 +1892,8 @@ public class MailUtil {
 		    "error", String.valueOf( error.getMessage() ),
 		    "errorType", error.getClass().getSimpleName(),
 		    "willFailover", willFailover,
-		    "ms", ms
+		    "ms", ms,
+		    "durationNanos", elapsed
 		) );
 	}
 }

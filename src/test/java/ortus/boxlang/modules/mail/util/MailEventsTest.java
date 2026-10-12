@@ -193,6 +193,7 @@ public class MailEventsTest extends BaseIntegrationTest {
 			assertFalse( ( Boolean ) invocation.get( Key.of( "spooled" ) ) );
 			assertTrue( ( Long ) sent.get( Key.of( "nanos" ) ) >= ( Long ) invocation.get( Key.of( "nanos" ) ) );
 			assertNotNull( sent.get( Key.of( "at" ) ) );
+			assertTrue( ( Long ) sent.get( Key.of( "durationNanos" ) ) / 1_000_000L == ( ( Number ) sent.get( Key.of( "ms" ) ) ).longValue() );
 			assertEquals( 1, sent.get( Key.of( "attempt" ) ) );
 			assertFalse( ( Boolean ) sent.get( Key.of( "failover" ) ) );
 			IStruct server = sent.getAsStruct( Key.of( "server" ) );

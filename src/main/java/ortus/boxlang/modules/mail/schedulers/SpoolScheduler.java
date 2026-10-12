@@ -168,11 +168,13 @@ public class SpoolScheduler extends BaseScheduler {
 		}
 
 		if ( !keys.isEmpty() ) {
+			final long elapsed = System.nanoTime() - started;
 			MailEvents.announce( MailEvents.ON_SPOOL_RUN, () -> Struct.of(
 			    "processed", result.getAsInteger( MailKeys.processed ),
 			    "failures", result.getAsInteger( MailKeys.failures ),
 			    "remaining", cache.getSize(),
-			    "ms", ( System.nanoTime() - started ) / 1_000_000L
+			    "ms", elapsed / 1_000_000L,
+			    "durationNanos", elapsed
 			) );
 		}
 
