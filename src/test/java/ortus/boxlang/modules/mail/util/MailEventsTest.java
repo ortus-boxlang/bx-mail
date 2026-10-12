@@ -81,11 +81,6 @@ public class MailEventsTest extends BaseIntegrationTest {
 		}
 
 		@InterceptionPoint
-		public void onMailDispatch( IStruct d ) {
-			keep( "onMailDispatch", d );
-		}
-
-		@InterceptionPoint
 		public void onMailSent( IStruct d ) {
 			keep( "onMailSent", d );
 		}
@@ -149,7 +144,7 @@ public class MailEventsTest extends BaseIntegrationTest {
 		moduleSettings.put( MailKeys.bounceTimeout, 60 );
 		// The spool caches point at the folder of whichever test class created them first: start from our own
 		dropSpoolCaches();
-		runtime.getInterceptorService().registerInterceptionPoint( MailEvents.ON_INVOCATION, MailEvents.ON_SPOOLED, MailEvents.ON_DISPATCH,
+		runtime.getInterceptorService().registerInterceptionPoint( MailEvents.ON_INVOCATION, MailEvents.ON_SPOOLED,
 		    MailEvents.ON_SENT, MailEvents.ON_ERROR, MailEvents.ON_BOUNCE, MailEvents.ON_SPOOL_RUN );
 		recorder = new Recorder();
 		runtime.getInterceptorService().register( recorder );
@@ -186,16 +181,18 @@ public class MailEventsTest extends BaseIntegrationTest {
 	}
 
 	@Test
-	public void aSentMessageAnnouncesInvocationDispatchAndSent() throws Exception {
+	public void aSentMessageAnnouncesInvocationAndSent() throws Exception {
 		try ( MockSmtpServer smtp = new MockSmtpServer() ) {
 			MailUtil.spoolOrSend( simple(), attributes( smtp.port(), false ), context );
-			assertEquals( List.of( "onMailInvocation", "onMailDispatch", "onMailSent" ), recorder.names );
+			assertEquals( List.of( "onMailInvocation", "onMailSent" ), recorder.names );
 			IStruct	invocation	= recorder.first( "onMailInvocation" );
 			IStruct	sent		= recorder.first( "onMailSent" );
 			String	id			= invocation.getAsString( Key.of( "id" ) );
 			assertNotNull( id );
 			assertEquals( id, sent.getAsString( Key.of( "id" ) ) );
 			assertFalse( ( Boolean ) invocation.get( Key.of( "spooled" ) ) );
+			assertTrue( ( Long ) sent.get( Key.of( "nanos" ) ) >= ( Long ) invocation.get( Key.of( "nanos" ) ) );
+			assertNotNull( sent.get( Key.of( "at" ) ) );
 			assertEquals( 1, sent.get( Key.of( "attempt" ) ) );
 			assertFalse( ( Boolean ) sent.get( Key.of( "failover" ) ) );
 			IStruct server = sent.getAsStruct( Key.of( "server" ) );
@@ -231,7 +228,7 @@ public class MailEventsTest extends BaseIntegrationTest {
 			        false, MailKeys.TLS, false )
 			);
 			MailUtil.sendMessage( servers, Struct.of(), simple(), "fixed-id", false );
-			assertEquals( List.of( "onMailDispatch", "onMailError", "onMailDispatch", "onMailSent" ), recorder.names );
+			assertEquals( List.of( "onMailError", "onMailSent" ), recorder.names );
 			IStruct error = recorder.first( "onMailError" );
 			assertEquals( "fixed-id", error.get( Key.of( "id" ) ) );
 			assertTrue( ( Boolean ) error.get( Key.of( "willFailover" ) ) );

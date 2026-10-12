@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Interception points that follow every message: `onMailInvocation`, `onMailSpooled`, `onMailDispatch`, `onMailSent`, `onMailError`, `onMailBounce` and `onMailSpoolRun`. The four points that were declared but never announced now fire, and three are new. Payloads are plain structs without passwords and are built only when something listens. See the readme.
+- Interception points that follow every message: `onMailInvocation`, `onMailSpooled`, `onMailSent`, `onMailError`, `onMailBounce` and `onMailSpoolRun`. The four points that were declared but never announced now fire, and three are new. Every payload carries `at` and `nanos`. Payloads are plain structs without passwords and are built only when something listens. See the readme.
 
 ### Fixed
 

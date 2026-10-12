@@ -1784,7 +1784,7 @@ public class MailUtil {
 	}
 
 	/**
-	 * Sends a message through the configured mail servers, with failover, and announces the dispatch, the result and every failed attempt.
+	 * Sends a message through the configured mail servers, with failover, and announces the result and every failed attempt.
 	 *
 	 * @param mailServers the servers, in the order to try them
 	 * @param attributes  the mail attributes
@@ -1815,7 +1815,6 @@ public class MailUtil {
 			IStruct primary = StructCaster.cast( mailServers.get( 0 ) );
 			MailUtil.setMessageServer( primary, attributes, message );
 			long started = System.nanoTime();
-			announceDispatch( id, 1, false, fromSpool, primary );
 			try {
 				messageId = message.send();
 				deleteAttachmentsIfRequested( attributes );
@@ -1838,7 +1837,6 @@ public class MailUtil {
 						MailUtil.setMessageServer( serverProperties, attributes, failoverMessage );
 						int		attempt			= i + 1;
 						long	attemptStarted	= System.nanoTime();
-						announceDispatch( id, attempt, true, fromSpool, serverProperties );
 						try {
 							messageId = failoverMessage.send();
 							deleteAttachmentsIfRequested( attributes );
@@ -1862,17 +1860,10 @@ public class MailUtil {
 		}
 	}
 
-	private static void announceDispatch( String id, int attempt, boolean failover, boolean fromSpool, IStruct server ) {
-		MailEvents.announce( MailEvents.ON_DISPATCH, () -> Struct.of(
-		    "id", id,
-		    "attempt", attempt,
-		    "failover", failover,
-		    "fromSpool", fromSpool,
-		    "server", MailEvents.describeServer( server )
-		) );
-	}
-
 	private static void announceSent( String id, String messageId, int attempt, boolean failover, boolean fromSpool, IStruct server, long startedNanos ) {
+		if ( !MailEvents.listening( MailEvents.ON_SENT ) ) {
+			return;
+		}
 		long ms = ( System.nanoTime() - startedNanos ) / 1_000_000L;
 		MailEvents.announce( MailEvents.ON_SENT, () -> Struct.of(
 		    "id", id,
@@ -1886,6 +1877,9 @@ public class MailUtil {
 	}
 
 	private static void announceError( String id, int attempt, boolean fromSpool, IStruct server, Exception error, long startedNanos, boolean willFailover ) {
+		if ( !MailEvents.listening( MailEvents.ON_ERROR ) ) {
+			return;
+		}
 		long ms = ( System.nanoTime() - startedNanos ) / 1_000_000L;
 		MailEvents.announce( MailEvents.ON_ERROR, () -> Struct.of(
 		    "id", id,

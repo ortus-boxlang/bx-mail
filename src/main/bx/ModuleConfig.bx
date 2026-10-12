@@ -127,8 +127,6 @@ class {
 			"onMailInvocation",
 			// The message was stored in the unsent spool: id, queueDepth
 			"onMailSpooled",
-			// A send attempt on one server is about to start: id, attempt, failover, fromSpool, server
-			"onMailDispatch",
 			// A server accepted the message: id, messageId, attempt, failover, fromSpool, server, ms
 			"onMailSent",
 			// One send attempt failed: id, attempt, server, error, errorType, willFailover, fromSpool, ms

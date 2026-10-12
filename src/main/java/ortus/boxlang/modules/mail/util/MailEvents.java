@@ -46,8 +46,6 @@ import ortus.boxlang.runtime.types.Struct;
  * <li>{@code onMailInvocation}: a message was built and is about to be spooled or sent. Data: {@code id}, {@code spooled}, {@code attributes},
  * {@code summary}.</li>
  * <li>{@code onMailSpooled}: the message was stored in the unsent spool. Data: {@code id}, {@code queueDepth}.</li>
- * <li>{@code onMailDispatch}: a send attempt on one server is about to start. Data: {@code id}, {@code attempt}, {@code failover},
- * {@code fromSpool}, {@code server}.</li>
  * <li>{@code onMailSent}: a server accepted the message. Data: {@code id}, {@code messageId}, {@code attempt}, {@code failover},
  * {@code fromSpool}, {@code server}, {@code ms}.</li>
  * <li>{@code onMailError}: one send attempt failed. Data: {@code id}, {@code attempt}, {@code server}, {@code error}, {@code errorType},
@@ -56,6 +54,7 @@ import ortus.boxlang.runtime.types.Struct;
  * {@code unreadable}.</li>
  * <li>{@code onMailSpoolRun}: one run of the spool task ended. Data: {@code processed}, {@code failures}, {@code remaining}, {@code ms}.</li>
  * </ul>
+ * Every payload also has {@code at} (epoch milliseconds) and {@code nanos} ({@code System.nanoTime()}, to order events inside one JVM).
  * Payloads are plain structs and arrays: no Commons Email object and no password ever leaves the module. They are built only when something
  * listens, and a listener that throws never breaks the mail.
  */
@@ -63,7 +62,6 @@ public final class MailEvents {
 
 	public static final Key				ON_INVOCATION		= Key.of( "onMailInvocation" );
 	public static final Key				ON_SPOOLED			= Key.of( "onMailSpooled" );
-	public static final Key				ON_DISPATCH			= Key.of( "onMailDispatch" );
 	public static final Key				ON_SENT				= Key.of( "onMailSent" );
 	public static final Key				ON_ERROR			= Key.of( "onMailError" );
 	public static final Key				ON_BOUNCE			= Key.of( "onMailBounce" );
@@ -111,7 +109,11 @@ public final class MailEvents {
 			return;
 		}
 		try {
-			BoxRuntime.getInstance().getInterceptorService().announce( point, payload.get() );
+			IStruct data = payload.get();
+			// Several events can fall in the same millisecond: nanos orders them (monotonic, only meaningful inside this JVM) and at is the wall clock
+			data.put( "at", System.currentTimeMillis() );
+			data.put( "nanos", System.nanoTime() );
+			BoxRuntime.getInstance().getInterceptorService().announce( point, data );
 		} catch ( Throwable t ) {
 			if ( logger.isDebugEnabled() ) {
 				logger.debug( "A listener of " + point.getName() + " failed: " + t.getMessage() );
