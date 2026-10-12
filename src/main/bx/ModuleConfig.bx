@@ -123,10 +123,20 @@ class {
 		 * A list of custom interception points to register into the runtime
 		 */
 		customInterceptionPoints = [
+			// A message was built and is about to be spooled or sent: id, spooled, attributes, summary
 			"onMailInvocation",
+			// The message was stored in the unsent spool: id, queueDepth
+			"onMailSpooled",
+			// A send attempt on one server is about to start: id, attempt, failover, fromSpool, server
 			"onMailDispatch",
+			// A server accepted the message: id, messageId, attempt, failover, fromSpool, server, ms
 			"onMailSent",
-			"onMailBounce"
+			// One send attempt failed: id, attempt, server, error, errorType, willFailover, fromSpool, ms
+			"onMailError",
+			// A spooled message could not be sent and moved to the bounce spool: id, error, unreadable
+			"onMailBounce",
+			// One run of the spool task ended: processed, failures, remaining, ms
+			"onMailSpoolRun"
 		];
 	}
 
