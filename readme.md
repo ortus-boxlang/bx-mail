@@ -121,6 +121,21 @@ Here's a PDF for you!
 </bx:mail>
 ```
 
+## Events
+
+The module announces interception points so that tools, such as a debug bar or a monitor, can follow every message without wrapping the component. Register an interceptor with methods of these names. Payloads are plain structs and arrays, never a Commons Email object, and no password is ever part of them. They are built only when something listens, and a listener that throws never breaks the mail.
+
+| Event | When | Data |
+|---|---|---|
+| `onMailInvocation` | A message was built and is about to be spooled or sent | `id`, `spooled`, `attributes` (safe ones only), `summary` (addresses, subject, headers and the tree of parts; text parts carry their text, small inline parts their bytes, attachments only name, type and size) |
+| `onMailSpooled` | The message was stored in the unsent spool | `id`, `queueDepth` |
+| `onMailSent` | A server accepted the message | `id`, `messageId`, `attempt`, `failover`, `fromSpool`, `server`, `ms` |
+| `onMailError` | One send attempt failed | `id`, `attempt`, `server`, `error`, `errorType`, `willFailover`, `fromSpool`, `ms` |
+| `onMailBounce` | A spooled message could not be sent and moved to the bounce spool | `id`, `error`, `unreadable` |
+| `onMailSpoolRun` | One run of the spool task ended | `processed`, `failures`, `remaining`, `ms` |
+
+The `id` ties the events of one message together. For a spooled message it is the key of the entry in the `mailUnsent` and `mailBounced` caches.
+
 ## Configuration
 
 Mail server connectivity may be provided either via runtime configuration ( e.g. `.boxlang.json` ) or via the attributes allowed by the mail component ( see above ).  An example configuration is provided below:

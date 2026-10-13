@@ -50,6 +50,7 @@ import ortus.boxlang.runtime.BoxRuntime;
 import ortus.boxlang.runtime.context.IBoxContext;
 import ortus.boxlang.runtime.context.RequestBoxContext;
 import ortus.boxlang.runtime.dynamic.ExpressionInterpreter;
+import ortus.boxlang.runtime.cache.providers.ICacheProvider;
 import ortus.boxlang.runtime.dynamic.casters.BooleanCaster;
 import ortus.boxlang.runtime.dynamic.casters.IntegerCaster;
 import ortus.boxlang.runtime.dynamic.casters.StringCaster;
@@ -1133,7 +1134,7 @@ public class MailUtil {
 		IStruct	moduleSettings	= runtime.getModuleService().getModuleSettings( MailKeys._MODULE_NAME );
 		Boolean	spoolEnable		= attributes.getAsBoolean( MailKeys.spoolEnable );
 		String	priority		= attributes.getAsString( Key.priority );
-		String	messageId		= null;
+		String	messageId		= UUID.randomUUID().toString();
 		if ( spoolEnable == null ) {
 			spoolEnable = moduleSettings.getAsBoolean( MailKeys.spoolEnable );
 		}
@@ -1143,20 +1144,32 @@ public class MailUtil {
 			spoolEnable = false;
 		}
 
+		final boolean spooled = spoolEnable;
+		MailEvents.announce( MailEvents.ON_INVOCATION, () -> Struct.of(
+		    "id", messageId,
+		    "spooled", spooled,
+		    "attributes", MailEvents.safeAttributes( attributes ),
+		    "summary", MailEvents.summarize( message )
+		) );
+
 		if ( spoolEnable ) {
-			messageId = UUID.randomUUID().toString();
-			IStruct emailData = Struct.of(
+			IStruct			emailData	= Struct.of(
 			    Key.message, emailToSerializableStruct( message, attributes ),
 			    Key.priority, priority,
 			    Key.attributes, attributes,
 			    MailKeys.mailServers, getMailServers( context, attributes )
 			);
-			runtime.getCacheService().getCache( spoolCache ).set(
+			ICacheProvider	unsent		= runtime.getCacheService().getCache( spoolCache );
+			unsent.set(
 			    messageId,
 			    emailData
 			);
+			MailEvents.announce( MailEvents.ON_SPOOLED, () -> Struct.of(
+			    "id", messageId,
+			    "queueDepth", unsent.getSize()
+			) );
 		} else {
-			String messageRef = sendMessage( getMailServers( context, attributes ), attributes, message );
+			String messageRef = sendMessage( getMailServers( context, attributes ), attributes, message, messageId, false );
 
 			if ( attributes.get( MailKeys.messageVariable ) != null ) {
 				ExpressionInterpreter.setVariable(
@@ -1767,6 +1780,21 @@ public class MailUtil {
 	}
 
 	public static String sendMessage( Array mailServers, IStruct attributes, Email message ) {
+		return sendMessage( mailServers, attributes, message, UUID.randomUUID().toString(), false );
+	}
+
+	/**
+	 * Sends a message through the configured mail servers, with failover, and announces the result and every failed attempt.
+	 *
+	 * @param mailServers the servers, in the order to try them
+	 * @param attributes  the mail attributes
+	 * @param message     the message
+	 * @param id          the identifier of the message in the events and in the spool
+	 * @param fromSpool   true when the spool task is sending a spooled message
+	 *
+	 * @return the message id given by the server
+	 */
+	public static String sendMessage( Array mailServers, IStruct attributes, Email message, String id, boolean fromSpool ) {
 		if ( logger.isTraceEnabled() ) {
 			String sanitizedMailServersString = mailServers.stream()
 			    .map( StructCaster::cast )
@@ -1784,11 +1812,15 @@ public class MailUtil {
 		String messageId = null;
 		try {
 			// try with our primary mail server
-			MailUtil.setMessageServer( StructCaster.cast( mailServers.get( 0 ) ), attributes, message );
+			IStruct primary = StructCaster.cast( mailServers.get( 0 ) );
+			MailUtil.setMessageServer( primary, attributes, message );
+			long started = System.nanoTime();
 			try {
 				messageId = message.send();
 				deleteAttachmentsIfRequested( attributes );
+				announceSent( id, messageId, 1, false, fromSpool, primary, started );
 			} catch ( EmailException ee ) {
+				announceError( id, 1, fromSpool, primary, ee, started, mailServers.size() > 1 );
 				// if that fails, try any additional mail servers defined
 				if ( logger.isWarnEnabled() ) {
 					String warnMessage = "Primary mail server failed to send message.";
@@ -1803,11 +1835,15 @@ public class MailUtil {
 						// Create a fresh email object for each failover attempt to avoid session initialization conflicts
 						Email	failoverMessage		= cloneEmailMessage( message, attributes );
 						MailUtil.setMessageServer( serverProperties, attributes, failoverMessage );
+						int		attempt			= i + 1;
+						long	attemptStarted	= System.nanoTime();
 						try {
 							messageId = failoverMessage.send();
 							deleteAttachmentsIfRequested( attributes );
+							announceSent( id, messageId, attempt, true, fromSpool, serverProperties, attemptStarted );
 							break;
 						} catch ( EmailException eee ) {
+							announceError( id, attempt, fromSpool, serverProperties, eee, attemptStarted, i + 1 < mailServers.size() );
 							logger.warn( "Failover mail server " + serverProperties.getAsString( Key.server )
 							    + " also failed to send the message. Error: " + eee.getMessage(), eee );
 							// continue to next server
@@ -1822,5 +1858,42 @@ public class MailUtil {
 		} catch ( Exception e ) {
 			throw new BoxRuntimeException( "Message failed to send. " + e.getMessage(), e );
 		}
+	}
+
+	private static void announceSent( String id, String messageId, int attempt, boolean failover, boolean fromSpool, IStruct server, long startedNanos ) {
+		if ( !MailEvents.listening( MailEvents.ON_SENT ) ) {
+			return;
+		}
+		long	elapsed	= System.nanoTime() - startedNanos;
+		long	ms		= elapsed / 1_000_000L;
+		MailEvents.announce( MailEvents.ON_SENT, () -> Struct.of(
+		    "id", id,
+		    "messageId", messageId,
+		    "attempt", attempt,
+		    "failover", failover,
+		    "fromSpool", fromSpool,
+		    "server", MailEvents.describeServer( server ),
+		    "ms", ms,
+		    "durationNanos", elapsed
+		) );
+	}
+
+	private static void announceError( String id, int attempt, boolean fromSpool, IStruct server, Exception error, long startedNanos, boolean willFailover ) {
+		if ( !MailEvents.listening( MailEvents.ON_ERROR ) ) {
+			return;
+		}
+		long	elapsed	= System.nanoTime() - startedNanos;
+		long	ms		= elapsed / 1_000_000L;
+		MailEvents.announce( MailEvents.ON_ERROR, () -> Struct.of(
+		    "id", id,
+		    "attempt", attempt,
+		    "fromSpool", fromSpool,
+		    "server", MailEvents.describeServer( server ),
+		    "error", String.valueOf( error.getMessage() ),
+		    "errorType", error.getClass().getSimpleName(),
+		    "willFailover", willFailover,
+		    "ms", ms,
+		    "durationNanos", elapsed
+		) );
 	}
 }

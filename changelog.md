@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Interception points that follow every message: `onMailInvocation`, `onMailSpooled`, `onMailSent`, `onMailError`, `onMailBounce` and `onMailSpoolRun`. The four points that were declared but never announced now fire, and three are new. Every payload carries `at` and `nanos`, and a duration in `ms` comes with `durationNanos`. Payloads are plain structs without passwords and are built only when something listens. See the readme.
+
 ### Fixed
 
 - [BL-2742](https://ortussolutions.atlassian.net/browse/BL-2742) - Long non-ASCII attachment file names arrived mangled (RFC 2047 inside an RFC 2231 parameter) in 1.4.10 - 1.4.14; the plain path was fixed in 1.4.15, this adds regression tests, removes the last `MultiPartEmail.attach()` call and repairs RFC 2047 names in mails spooled by older versions

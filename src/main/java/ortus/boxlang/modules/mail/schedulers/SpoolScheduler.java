@@ -29,6 +29,7 @@ import java.util.stream.Collectors;
 
 import org.apache.commons.mail2.jakarta.Email;
 
+import ortus.boxlang.modules.mail.util.MailEvents;
 import ortus.boxlang.modules.mail.util.MailKeys;
 import ortus.boxlang.modules.mail.util.MailUtil;
 import ortus.boxlang.runtime.BoxRuntime;
@@ -137,6 +138,7 @@ public class SpoolScheduler extends BaseScheduler {
 		    MailKeys.failures, 0
 		);
 
+		long			started	= System.nanoTime();
 		ICacheProvider	cache	= runtime.getCacheService().getCache( spoolCache );
 		ICacheProvider	bounced	= runtime.getCacheService().getCache( bounceCache );
 
@@ -163,6 +165,17 @@ public class SpoolScheduler extends BaseScheduler {
 				// remaining entries. Preserve it and continue.
 				bounceUnreadableEntry( key, "deserialization failed: " + e.getMessage(), cache, result );
 			}
+		}
+
+		if ( !keys.isEmpty() ) {
+			final long elapsed = System.nanoTime() - started;
+			MailEvents.announce( MailEvents.ON_SPOOL_RUN, () -> Struct.of(
+			    "processed", result.getAsInteger( MailKeys.processed ),
+			    "failures", result.getAsInteger( MailKeys.failures ),
+			    "remaining", cache.getSize(),
+			    "ms", elapsed / 1_000_000L,
+			    "durationNanos", elapsed
+			) );
 		}
 
 		return result;
@@ -192,7 +205,7 @@ public class SpoolScheduler extends BaseScheduler {
 			// Note: attachment cleanup for `remove=true` is handled at spool time in
 			// MailUtil.spoolOrSend (the bytes are already captured in the spool entry),
 			// so no file deletion is needed here.
-			MailUtil.sendMessage( mailServers, entryAttributes, message );
+			MailUtil.sendMessage( mailServers, entryAttributes, message, key, true );
 			result.put( MailKeys.processed, result.getAsInteger( MailKeys.processed ) + 1 );
 			if ( logEnabled ) {
 				logger.debug( String.format(
@@ -215,6 +228,11 @@ public class SpoolScheduler extends BaseScheduler {
 			    );
 			entryData.put( Key.exception, exceptionMessage );
 			bounced.set( key, entryData );
+			MailEvents.announce( MailEvents.ON_BOUNCE, () -> Struct.of(
+			    "id", key,
+			    "error", String.valueOf( e.getMessage() ),
+			    "unreadable", false
+			) );
 			logger.error( String.format(
 			    "Failed to send spooled message [%s]: %s",
 			    key,
@@ -248,6 +266,11 @@ public class SpoolScheduler extends BaseScheduler {
 		);
 		result.getAsArray( MailKeys.messages ).push( exceptionMessage );
 
+		MailEvents.announce( MailEvents.ON_BOUNCE, () -> Struct.of(
+		    "id", key,
+		    "error", reason,
+		    "unreadable", true
+		) );
 		Path	source	= Path.of( moduleSettings.getAsString( MailKeys.spoolDirectory ), key + cacheFileExtension );
 		Path	target	= Path.of( moduleSettings.getAsString( MailKeys.bounceDirectory ), unreadableDirectory, key + cacheFileExtension );
 
